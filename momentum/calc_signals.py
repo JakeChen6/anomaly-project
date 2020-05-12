@@ -63,6 +63,9 @@ MSEALL = MSEALL[cond].copy()
 
 # Define signal calculation process
 
+# signal: cumulative returns over the past lb months.
+
+
 def calc_past_cum_rets(m, lb):
     """
     m:      current month
@@ -97,8 +100,7 @@ def get_signals(args):
     lb:             look back period
     """
     subrange, lb = args
-
-    # signal: the cumulative return over the past lb months.
+    
     signals = {m: calc_past_cum_rets(m, lb) for m in subrange}
 
     return signals
@@ -126,29 +128,30 @@ END = DATE_RANGE[DATE_RANGE <= np.datetime64(dt.date(END, 12, 31))][-1]
 
 
 for lb in LOOK_BACK:
-    for hd in HOLDING:
-        print('\nCalculating (%s, %s) strategy...' % (lb, hd), end='\t')
+    hd = max(HOLDING)
+    print('\nCalculating (%s, %s) strategy...' % (lb, hd), end='\t')
 
-        # define the total workload and then split it
-        first_date = DATE_RANGE[DATE_RANGE <= START][-hd]  # on this date we calc the first set of portfolios
-        date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= END)]  # the total workload
-        size = len(date_range) // CPU_COUNT  # each process gets a subset, of this size, of the total workload
+    # on this date we calculate the first set of signals
+    first_date = DATE_RANGE[DATE_RANGE <= START][-hd]
+    # calculate signals for every month in this range
+    date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= END)]
 
-        chunks = []  # container where we store all the subsets of the total workload.
-        for i in range(CPU_COUNT):
-            if i != CPU_COUNT-1:
-                chunks.append(date_range[size*i:size*(i+1)])
-            else:
-                chunks.append(date_range[size*i:])
+    # we will split the task and distribute the workloads to multiple processes
+    size = len(date_range) // CPU_COUNT  # the size of each workload
+    chunks = []
+    for i in range(CPU_COUNT):
+        if i != CPU_COUNT-1:
+            chunks.append(date_range[size*i:size*(i+1)])
+        else:
+            chunks.append(date_range[size*i:])
 
-        # distribute the workloads to the processes managed by a ProcessPoolExecutor
-        with futures.ProcessPoolExecutor(max_workers=CPU_COUNT) as ex:
-            start_time = time.time()
-            res = ex.map(get_signals, zip(chunks, [lb] * CPU_COUNT))
-            # collect the returned results and save them into 'COLLECTOR'
-            for signals in res:
-                COLLECTOR.setdefault((lb, hd), {}).update(signals)
-            print('{:.2f} s.'.format(time.time() - start_time))
+    with futures.ProcessPoolExecutor(max_workers=CPU_COUNT) as ex:
+        start_time = time.time()
+        res = ex.map(get_signals, zip(chunks, [lb] * CPU_COUNT))  # distribute work to processes
+        # collect the returned results and save them into 'COLLECTOR'
+        for signals in res:
+            COLLECTOR.setdefault(lb, {}).update(signals)
+        print('{:.2f} s.'.format(time.time() - start_time))
 
 
 #%%
@@ -160,18 +163,17 @@ if not os.path.exists(ENV_PATH + f'/results/{NAME}'):
     os.mkdir(ENV_PATH + f'/results/{NAME}/signals')
 
 for lb in LOOK_BACK:
-    for hd in HOLDING:
-        table = pd.DataFrame()
-        signals = COLLECTOR[(lb, hd)]
-        # consolidate each month's signals into a single table
-        for k, v in signals.items():
-            df = pd.DataFrame(v)
-            df.reset_index(inplace=True)
-            df['DATE'] = k
-            table = pd.concat([table, df], ignore_index=True)
+    table = pd.DataFrame()
+    signals = COLLECTOR[lb]
+    # consolidate each month's signals into a single table
+    for k, v in signals.items():
+        df = pd.DataFrame(v)
+        df.reset_index(inplace=True)
+        df['DATE'] = k
+        table = pd.concat([table, df], ignore_index=True)
 
-        table.rename(columns={'RET': 'SIGNAL'}, inplace=True)
-        table = table.reindex(columns=['DATE', 'PERMNO', 'SIGNAL'])  # reorder the columns
-        table.sort_values(by='DATE', inplace=True)  # sort by 'DATE'
-        table.to_csv(ENV_PATH + f'/results/{NAME}/signals/{lb}-{hd}.csv')  # write to a CSV
-        print('%s-%s done.' % (lb, hd))
+    table.rename(columns={'RET': 'SIGNAL'}, inplace=True)
+    table = table.reindex(columns=['DATE', 'PERMNO', 'SIGNAL'])  # reorder the columns
+    table.sort_values(by='DATE', inplace=True)  # sort by 'DATE'
+    table.to_csv(ENV_PATH + f'/results/{NAME}/signals/{lb}.csv')  # write to a CSV
+    print('%s-%s done.' % (lb, hd))
