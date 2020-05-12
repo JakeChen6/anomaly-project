@@ -1,3 +1,4 @@
+import os
 import time
 import datetime as dt
 from functools import reduce
@@ -9,7 +10,7 @@ import pandas as pd
 
 ENV_PATH = '/Users/zhishe/myProjects/anomaly'
 
-OUTPUT_PATH = ENV_PATH + '/anomalies/1-Momentum/signals'
+NAME = 'momentum'
 
 
 #%%
@@ -75,10 +76,9 @@ def calc_past_cum_rets(m, lb):
     ]
 
     # exclude non-common stocks
-    mseall = MSEALL[
-        (MSEALL['DATE'] >= start) &
-        (MSEALL['DATE'] <= end)
-    ]
+    mseall = MSEALL[MSEALL['DATE'] <= end]
+    mseall = mseall.sort_values('DATE')
+    mseall = mseall.drop_duplicates(subset=['PERMNO'], keep='last')
 
     data = data.set_index('PERMNO')
     index = set(data.index) & set(mseall['PERMNO'].values)
@@ -152,7 +152,12 @@ for lb in LOOK_BACK:
 
 
 #%%
+
 # Output
+
+if not os.path.exists(ENV_PATH + f'/results/{NAME}'):
+    os.mkdir(ENV_PATH + f'/results/{NAME}')
+    os.mkdir(ENV_PATH + f'/results/{NAME}/signals')
 
 for lb in LOOK_BACK:
     for hd in HOLDING:
@@ -168,5 +173,5 @@ for lb in LOOK_BACK:
         table.rename(columns={'RET': 'SIGNAL'}, inplace=True)
         table = table.reindex(columns=['DATE', 'PERMNO', 'SIGNAL'])  # reorder the columns
         table.sort_values(by='DATE', inplace=True)  # sort by 'DATE'
-        table.to_csv(OUTPUT_PATH + '/{}-{}.csv'.format(lb, hd))  # write to a CSV
+        table.to_csv(ENV_PATH + f'/results/{NAME}/signals/{lb}-{hd}.csv')  # write to a CSV
         print('%s-%s done.' % (lb, hd))
