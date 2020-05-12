@@ -64,8 +64,9 @@ MSEALL = MSEALL[cond].copy()
 
 # signal: ratio of current price to the highest price during the past 12 months.
 
-MSF['PRC'] = MSF['PRC'].abs()
-MSF['ASKHI'] = MSF['ASKHI'].abs()
+# adjust prices
+MSF['PRC'] = MSF['PRC'].abs() / MSF['CFACPR']
+MSF['ASKHI'] = MSF['ASKHI'].abs() / MSF['CFACPR']
 
 
 def calc_ratios(m):
