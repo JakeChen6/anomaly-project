@@ -8,7 +8,7 @@ import pandas as pd
 
 ENV_PATH = '/Users/zhishe/myProjects/anomaly'
 
-ANOMALY_PATH = ENV_PATH + '/anomalies/3-52-Week High'
+NAME = '52_week_high'
 
 
 #%%
@@ -50,7 +50,7 @@ def calc_portfolios(*args):
 
     """
     lb, hd = args
-    signals = pd.read_csv(ANOMALY_PATH + f'/signals/{lb}-{hd}.csv')  # read signals from CSV
+    signals = pd.read_csv(ENV_PATH + f'/results/{NAME}/signals/{lb}-{hd}.csv')  # read signals from CSV
     signals['DATE'] = pd.to_datetime(signals['DATE'])  # str -> datetime
 
     winners = {}
@@ -203,7 +203,7 @@ with futures.ProcessPoolExecutor(max_workers=CPU_COUNT) as ex:
         print('{}-{} done, {:.2f}s.'.format(*key, exec_time))
 
 # save the collector to local
-with open(ANOMALY_PATH + '/results/portfolios.pkl', 'wb') as f:
+with open(ENV_PATH + f'/results/{NAME}/plots/portfolios.pkl', 'wb') as f:
     pk.dump(collector, f)
 
 
@@ -213,7 +213,7 @@ with open(ANOMALY_PATH + '/results/portfolios.pkl', 'wb') as f:
 # We distribute the workload to multiple processes in order to get a speed-up.
 
 # need collector_portfolios as input
-with open(ANOMALY_PATH + '/results/portfolios.pkl', 'rb') as f:
+with open(ENV_PATH + f'/results/{NAME}/plots/portfolios.pkl', 'rb') as f:
     collector_portfolios = pk.load(f)
 
 with futures.ProcessPoolExecutor(max_workers=4) as ex:
@@ -236,5 +236,5 @@ with futures.ProcessPoolExecutor(max_workers=4) as ex:
         print('{}-{} done, {:.2f}s.'.format(*key, exec_time))
 
 # save the collector to local        
-with open(ANOMALY_PATH + '/results/monthly_returns.pkl', 'wb') as f:
+with open(ENV_PATH + f'/results/{NAME}/plots/monthly_returns.pkl', 'wb') as f:
     pk.dump(collector, f)
