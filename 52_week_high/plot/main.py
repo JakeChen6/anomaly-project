@@ -30,12 +30,16 @@ from bokeh.layouts import column, row
 from bokeh.models import ColumnDataSource, PreText, Select
 from bokeh.plotting import figure
 
-DATA_DIR = '/Users/zhishe/myProjects/anomaly/anomalies/3-52-Week High/results'
+ENV_PATH = '/Users/zhishe/myProjects/anomaly'
+
+NAME = '52_week_high'
+
+DATA_DIR = ENV_PATH + f'/results/{NAME}/plots'
 
 with open(DATA_DIR + '/monthly_returns.pkl', 'rb') as f:
     MONTHLY_RETS = pk.load(f)
 
-LOOK_BACK = ['6']
+LOOK_BACK = ['12']
 HOLDING = ['6']
 
 
@@ -55,7 +59,7 @@ def get_data(lb, hd):
     return data
 
 
-title = PreText(text='52 Week High', width=500)
+title = PreText(text=NAME, width=500)
 
 # set up widgets
 
