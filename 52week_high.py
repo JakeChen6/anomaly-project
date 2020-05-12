@@ -112,7 +112,8 @@ def calc_ratios(m):
             continue
         highest = subdata['ASKHI'].max()
         r = subdata.iloc[-1]['PRC'] / highest
-        ratios[p] = r
+        if pd.notna(r):
+            ratios[p] = r
 
     # save in a pandas.Series
     series = pd.Series(ratios)
