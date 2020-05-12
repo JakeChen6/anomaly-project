@@ -1,6 +1,7 @@
 import os
 import time
 import datetime as dt
+import pickle as pk
 from functools import reduce
 from concurrent import futures
 
@@ -18,7 +19,7 @@ NAME = 'momentum'
 # Filter
 
 # common stocks only
-COMMON_STOCKS = [10, 11]
+#COMMON_STOCKS = [10, 11]
 
 # exclude penny stocks
 PRICE_LIMIT = 5
@@ -33,8 +34,10 @@ EXCH_CODE = [1, 2, 3]
 
 # monthly stock data
 MSF = pd.read_hdf(ENV_PATH + '/data/msf.h5', key='msf')
-# monthly stock event
-MSEALL = pd.read_hdf(ENV_PATH + '/data/mseall.h5', key='mseall')
+
+# common stocks - PERMNOs
+with open(ENV_PATH + '/data/common_stock_permno.pkl', 'rb') as f:
+    COMMON_STOCK_PERMNO = pk.load(f)
 
 # range of dates
 DATE_RANGE = MSF['DATE'].unique()
@@ -52,11 +55,6 @@ MSF = MSF[MSF['PRC'].abs() >= PRICE_LIMIT].copy()
 conds = (MSF['HEXCD'] == c for c in EXCH_CODE)
 cond = reduce(lambda x, y: x | y, conds)
 MSF = MSF[cond].copy()
-
-# common stocks only
-conds = (MSEALL['SHRCD'] == c for c in COMMON_STOCKS)
-cond = reduce(lambda x, y: x | y, conds)
-MSEALL = MSEALL[cond].copy()
 
 
 #%%
@@ -78,13 +76,11 @@ def calc_past_cum_rets(m, lb):
         (MSF['DATE'] <= end)
     ]
 
-    # exclude non-common stocks
-    mseall = MSEALL[MSEALL['DATE'] <= end]
-    mseall = mseall.sort_values('DATE')
-    mseall = mseall.drop_duplicates(subset=['PERMNO'], keep='last')
-
+    # only include common stocks
+    common_stock_permno = COMMON_STOCK_PERMNO[end]
+    
     data = data.set_index('PERMNO')
-    index = set(data.index) & set(mseall['PERMNO'].values)
+    index = set(data.index) & set(common_stock_permno)
     data = data.loc[index].copy()  # only keep common stocks
 
     # cumulative return in the past lb months
