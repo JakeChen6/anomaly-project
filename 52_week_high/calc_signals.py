@@ -9,7 +9,7 @@ import pandas as pd
 
 ENV_PATH = '/Users/zhishe/myProjects/anomaly'
 
-OUTPUT_PATH = ENV_PATH + '/anomalies/3-52-Week High/signals'
+NAME = '52_week_high'
 
 
 #%%
@@ -194,5 +194,5 @@ for lb in LOOK_BACK:
         table.rename(columns={'RATIO': 'SIGNAL'}, inplace=True)
         table = table.reindex(columns=['DATE', 'PERMNO', 'SIGNAL'])
         table.sort_values(by='DATE', inplace=True)
-        table.to_csv(OUTPUT_PATH + '/{}-{}.csv'.format(lb, hd))
+        table.to_csv(ENV_PATH + '/results/{}/signals/{}-{}.csv'.format(NAME, lb, hd))
         print('%s-%s done.' % (lb, hd))
