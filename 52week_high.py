@@ -146,7 +146,7 @@ START = 1963
 END   = 2018
 
 # look back periods & holding periods
-LOOK_BACK = [6]
+LOOK_BACK = [12]
 HOLDING   = [6]
 
 START = DATE_RANGE[DATE_RANGE >= np.datetime64(dt.date(START, 1, 1))][0]
