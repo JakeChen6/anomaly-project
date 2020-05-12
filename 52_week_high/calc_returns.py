@@ -154,7 +154,7 @@ def calc_monthly_rets(*args):
 #%%
 
 # look back periods & holding periods
-LOOK_BACK = [6]
+LOOK_BACK = [12]
 HOLDING   = [6]
 
 CPU_COUNT = psutil.cpu_count(logical=False)
