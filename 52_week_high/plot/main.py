@@ -52,10 +52,10 @@ def get_data(lb, hd):
     data.sort_index(inplace=True)
     data['w_netval'] = (data['w'] + 1).cumprod()
     data['l_netval'] = (data['l'] + 1).cumprod()
-    data['wl_netval'] = (data['wl'] + 1).cumprod()
+    data['ls_netval'] = (data['ls'] + 1).cumprod()
     data['w_drawdown'] = (data['w_netval'] / data['w_netval'].cummax()) - 1
     data['l_drawdown'] = (data['l_netval'] / data['l_netval'].cummax()) - 1
-    data['wl_drawdown'] = (data['wl_netval'] / data['wl_netval'].cummax()) - 1
+    data['ls_drawdown'] = (data['ls_netval'] / data['ls_netval'].cummax()) - 1
     return data
 
 
@@ -86,9 +86,9 @@ ts2.circle('date', 'l_netval', size=1, source=source, color=None, selection_colo
 
 # ts3
 ts3 = figure(plot_width=900, plot_height=200, tools=tools, x_axis_type='datetime', active_drag="xbox_select")
-ts3.line('date', 'wl_netval', source=source)
+ts3.line('date', 'ls_netval', source=source)
 ts3.yaxis.axis_label = 'Net Value'
-ts3.circle('date', 'wl_netval', size=1, source=source, color=None, selection_color="orange")
+ts3.circle('date', 'ls_netval', size=1, source=source, color=None, selection_color="orange")
 
 ts2.x_range = ts1.x_range
 ts3.x_range = ts1.x_range
@@ -105,19 +105,19 @@ def update(selected=None):
     lb, hd = lookback.value, holding.value
 
     df = get_data(lb, hd)
-    data = df[['w_netval', 'l_netval', 'wl_netval']]
+    data = df[['w_netval', 'l_netval', 'ls_netval']]
     source.data = data
 
     update_stats(df)
 
-    ts1.title.text, ts2.title.text, ts3.title.text = 'Winner', 'Loser', 'Winner-Loser'
+    ts1.title.text, ts2.title.text, ts3.title.text = 'Winner', 'Loser', 'Long-Short'
 
 def update_stats(data):
-    df = pd.DataFrame(columns=['w', 'l', 'wl'])
-    rets = data[['w', 'l', 'wl']]
+    df = pd.DataFrame(columns=['w', 'l', 'ls'])
+    rets = data[['w', 'l', 'ls']]
     df.loc['avg monthly ret'] = rets.mean(axis=0)
     df.loc['t-statistic'] = rets.apply(lambda x: sci_stats.ttest_1samp(x, 0).statistic, axis=0)
-    df.loc['sharpe ratio'] = df.loc['avg monthly ret'] / rets.std(axis=0) * np.sqrt(12)
+    df.loc['sharpe ratio'] = df.loc['avg monthly ret'] / rets.std(axis=0) * np.sqrt(12)  # scaled to annual
     for col in df.columns:
         df.loc['max drawdown', col] = data[f'{col}_drawdown'].min()
     stats.text = str(df)
