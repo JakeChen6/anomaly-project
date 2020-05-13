@@ -1,9 +1,9 @@
 import os
 import time
+import datetime as dt
 import pickle as pk
 from concurrent import futures
 
-import psutil
 import numpy as np
 import pandas as pd
 
@@ -19,6 +19,10 @@ NAME = 'short_term_reversal'
 # monthly stock data; we only need return data
 MSF = pd.read_hdf(ENV_PATH + '/data/msf.h5', key='msf')
 
+# range of dates
+DATE_RANGE = MSF['DATE'].unique()
+DATE_RANGE.sort()
+
 
 #%%
 
@@ -29,8 +33,11 @@ MSF = pd.read_hdf(ENV_PATH + '/data/msf.h5', key='msf')
 # given portfolio series, calculate monthly return series;
 # given monthly return series, display plots and statistics.
 
+START = 1934
+START = DATE_RANGE[DATE_RANGE >= np.datetime64(dt.date(START, 1, 1))][0]
 
-def calc_portfolios(*args):
+
+def calc_portfolios(lb):
     """
     Given signals (a CSV file), calculate a winner portfolio series and a loser
     portfolio series.
@@ -39,8 +46,6 @@ def calc_portfolios(*args):
     ----------
     lb : int
         look back period
-    hd : int
-        holding period
 
     Returns
     -------
@@ -48,8 +53,7 @@ def calc_portfolios(*args):
     loser portfolio series : dict
 
     """
-    lb, hd = args
-    signals = pd.read_csv(ENV_PATH + f'/results/{NAME}/signals/{lb}-{hd}.csv')  # read signals from CSV
+    signals = pd.read_csv(ENV_PATH + f'/results/{NAME}/signals/{lb}.csv')  # read signals from CSV
     signals['DATE'] = pd.to_datetime(signals['DATE'])  # str -> datetime
 
     winners = {}
@@ -121,7 +125,7 @@ def calc_monthly_rets(*args):
 
     months = sorted(winners.keys())  # all the months; winners and losers have the same keys
     for i, current_month in enumerate(months):
-        if i < hd-1:  # still in "warm-up" period
+        if current_month < START:  # still in "warm-up" period
             continue
         # in each month, the return is calculated as the equally weighted average
         # of the returns from the hd separate portfolios.
@@ -154,8 +158,6 @@ def calc_monthly_rets(*args):
 LOOK_BACK = [1]
 HOLDING   = [1]
 
-CPU_COUNT = psutil.cpu_count(logical=False)
-
 
 def helper_timeit(fn, *args, **kwargs):
     """
@@ -184,23 +186,22 @@ def helper_timeit(fn, *args, **kwargs):
 if not os.path.exists(ENV_PATH + f'/results/{NAME}/plots'):
     os.mkdir(ENV_PATH + f'/results/{NAME}/plots')
 
-with futures.ProcessPoolExecutor(max_workers=CPU_COUNT) as ex:
+with futures.ProcessPoolExecutor(max_workers=4) as ex:
     collector = dict()  # to collect the results returned from multiple processes
     wait_for = list()  # to record tasks assigned to processes
 
     for lb in LOOK_BACK:
-        for hd in HOLDING:
-            print('Calculating {}-{} portfolios...'.format(lb, hd))
-            f = ex.submit(helper_timeit, calc_portfolios, lb, hd)  # schedule the future to run
-            f.arg = (lb, hd)
-            wait_for.append(f)  # record the scheduled future
+        print(f'Calculating look back {lb} portfolios...')
+        f = ex.submit(helper_timeit, calc_portfolios, lb)  # schedule the future to run
+        f.arg = lb
+        wait_for.append(f)  # record the scheduled future
 
     # collect the results returned from multiple processes
     for f in futures.as_completed(wait_for):
-        key = f.arg
+        lb = f.arg
         res, exec_time = f.result()
-        collector[key] = res
-        print('{}-{} done, {:.2f}s.'.format(*key, exec_time))
+        collector[lb] = res
+        print('look back {} done, {:.2f}s.'.format(lb, exec_time))
 
 # save the collector to local
 with open(ENV_PATH + f'/results/{NAME}/plots/portfolios.pkl', 'wb') as f:
@@ -222,8 +223,8 @@ with futures.ProcessPoolExecutor(max_workers=4) as ex:
 
     for lb in LOOK_BACK:
         for hd in HOLDING:
-            print('Calculating {}-{} monthly returns...'.format(lb, hd))
-            winners, losers = collector_portfolios[(lb, hd)]
+            print(f'Calculating {lb}-{hd} monthly returns...')
+            winners, losers = collector_portfolios[lb]
             f = ex.submit(helper_timeit, calc_monthly_rets, (winners, losers), hd)
             f.arg = (lb, hd)
             wait_for.append(f)  # record the scheduled future

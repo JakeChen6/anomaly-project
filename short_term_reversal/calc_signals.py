@@ -1,6 +1,7 @@
 import os
 import time
 import datetime as dt
+import pickle as pk
 from functools import reduce
 from concurrent import futures
 
@@ -18,7 +19,7 @@ NAME = 'short_term_reversal'
 # Filter
 
 # common stocks only
-COMMON_STOCKS = [10, 11]
+#COMMON_STOCKS = [10, 11]
 
 # exclude penny stocks
 PRICE_LIMIT = 5
@@ -33,8 +34,10 @@ EXCH_CODE = [1, 2, 3]
 
 # monthly stock data
 MSF = pd.read_hdf(ENV_PATH + '/data/msf.h5', key='msf')
-# monthly stock event
-MSEALL = pd.read_hdf(ENV_PATH + '/data/mseall.h5', key='mseall')
+
+# common stocks - PERMNOs
+with open(ENV_PATH + '/data/common_stock_permno.pkl', 'rb') as f:
+    COMMON_STOCK_PERMNO = pk.load(f)
 
 # range of dates
 DATE_RANGE = MSF['DATE'].unique()
@@ -52,11 +55,6 @@ MSF = MSF[MSF['PRC'].abs() >= PRICE_LIMIT].copy()
 conds = (MSF['HEXCD'] == c for c in EXCH_CODE)
 cond = reduce(lambda x, y: x | y, conds)
 MSF = MSF[cond].copy()
-
-# common stocks only
-conds = (MSEALL['SHRCD'] == c for c in COMMON_STOCKS)
-cond = reduce(lambda x, y: x | y, conds)
-MSEALL = MSEALL[cond].copy()
 
 
 #%%
@@ -84,11 +82,11 @@ def get_lagged_returns(m):
     prev_month = DATE_RANGE[DATE_RANGE < m][-1]  # previous month
     data = MSF[MSF['DATE'] == prev_month]
 
-    # filter out non-common stocks
-    mseall = MSEALL[MSEALL['DATE'] == prev_month]
+    # only include common stocks
+    common_stock_permno = COMMON_STOCK_PERMNO[prev_month]
 
     data = data.set_index('PERMNO')
-    index = set(data.index) & set(mseall['PERMNO'].values)
+    index = set(data.index) & set(common_stock_permno)
     data = data.loc[index]  # only keep common stocks
 
     return data['RET'].dropna()
@@ -125,27 +123,29 @@ END = DATE_RANGE[DATE_RANGE <= np.datetime64(dt.date(END, 12, 31))][-1]
 
 
 for lb in LOOK_BACK:
-    for hd in HOLDING:
-        print('\nCalculating (%s, %s) strategy...' % (lb, hd), end='\t')
+    hd = max(HOLDING)
+    print('\nCalculating (%s, %s) strategy...' % (lb, hd), end='\t')
 
-        # split the task into several subtasks.
-        first_date = DATE_RANGE[DATE_RANGE <= START][-hd]  # on this date we calc the first set of portfolios
-        date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= END)]  # each process gets a subset of this array
-        size = len(date_range) // CPU_COUNT  # size of subset
+    # on this date we calculate the first set of signals
+    first_date = DATE_RANGE[DATE_RANGE <= START][-hd]
+    # calculate signals for every month in this range
+    date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= END)]
 
-        chunks = []
-        for i in range(CPU_COUNT):
-            if i != CPU_COUNT-1:
-                chunks.append(date_range[size*i:size*(i+1)])
-            else:
-                chunks.append(date_range[size*i:])
+    # we will split the task and distribute the workloads to multiple processes
+    size = len(date_range) // CPU_COUNT  # the size of each workload
+    chunks = []
+    for i in range(CPU_COUNT):
+        if i != CPU_COUNT-1:
+            chunks.append(date_range[size*i:size*(i+1)])
+        else:
+            chunks.append(date_range[size*i:])
 
-        with futures.ProcessPoolExecutor(max_workers=CPU_COUNT) as ex:
-            start_time = time.time()
-            res = ex.map(get_signals, zip(chunks, [lb] * CPU_COUNT))
-            for signals in res:
-                COLLECTOR.setdefault((lb, hd), {}).update(signals)
-            print('{:.2f} s.'.format(time.time() - start_time))
+    with futures.ProcessPoolExecutor(max_workers=CPU_COUNT) as ex:
+        start_time = time.time()
+        res = ex.map(get_signals, zip(chunks, [lb] * CPU_COUNT))
+        for signals in res:
+            COLLECTOR.setdefault(lb, {}).update(signals)
+        print('{:.2f} s.'.format(time.time() - start_time))
 
 
 #%%
@@ -157,18 +157,17 @@ if not os.path.exists(ENV_PATH + f'/results/{NAME}'):
     os.mkdir(ENV_PATH + f'/results/{NAME}/signals')
 
 for lb in LOOK_BACK:
-    for hd in HOLDING:
-        table = pd.DataFrame()
-        signals = COLLECTOR[(lb, hd)]
-        # consolidate each month's signals into a single table
-        for k, v in signals.items():
-            df = pd.DataFrame(v)
-            df.reset_index(inplace=True)
-            df['DATE'] = k
-            table = pd.concat([table, df], ignore_index=True)
+    table = pd.DataFrame()
+    signals = COLLECTOR[lb]
+    # consolidate each month's signals into a single table
+    for k, v in signals.items():
+        df = pd.DataFrame(v)
+        df.reset_index(inplace=True)
+        df['DATE'] = k
+        table = pd.concat([table, df], ignore_index=True)
 
-        table.rename(columns={'RET': 'SIGNAL'}, inplace=True)
-        table = table.reindex(columns=['DATE', 'PERMNO', 'SIGNAL'])
-        table.sort_values(by='DATE', inplace=True)
-        table.to_csv(ENV_PATH + '/results/{}/signals/{}-{}.csv'.format(NAME, lb, hd))
-        print('%s-%s done.' % (lb, hd))
+    table.rename(columns={'RET': 'SIGNAL'}, inplace=True)
+    table = table.reindex(columns=['DATE', 'PERMNO', 'SIGNAL'])
+    table.sort_values(by='DATE', inplace=True)
+    table.to_csv(ENV_PATH + f'/results/{NAME}/signals/{lb}.csv')
+    print('%s done.' % lb)
