@@ -172,4 +172,4 @@ for lb in LOOK_BACK:
     table = table.reindex(columns=['DATE', 'PERMNO', 'SIGNAL'])  # reorder the columns
     table.sort_values(by='DATE', inplace=True)  # sort by 'DATE'
     table.to_csv(ENV_PATH + f'/results/{NAME}/signals/{lb}.csv')  # write to a CSV
-    print('%s-%s done.' % (lb, hd))
+    print('%s done.' % lb)
