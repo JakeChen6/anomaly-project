@@ -1,15 +1,13 @@
 import os
 import time
-import datetime as dt
 import pickle as pk
 from concurrent import futures
 
-import numpy as np
 import pandas as pd
 
 ENV_PATH = '/Users/zhishe/myProjects/anomaly'
 
-NAME = 'short_term_reversal'
+NAME = 'firm_age_momentum'
 
 
 #%%
@@ -18,10 +16,6 @@ NAME = 'short_term_reversal'
 
 # monthly stock data; we only need return data
 MSF = pd.read_hdf(ENV_PATH + '/data/msf.h5', key='msf')
-
-# range of dates
-DATE_RANGE = MSF['DATE'].unique()
-DATE_RANGE.sort()
 
 
 #%%
@@ -32,9 +26,6 @@ DATE_RANGE.sort()
 # given signals, calculate portfolio series;
 # given portfolio series, calculate monthly return series;
 # given monthly return series, display plots and statistics.
-
-START = 1934
-START = DATE_RANGE[DATE_RANGE >= np.datetime64(dt.date(START, 1, 1))][0]
 
 
 def calc_portfolios(lb):
@@ -60,15 +51,14 @@ def calc_portfolios(lb):
     losers = {}
 
     # in each month we have a new winner portfolio and a new loser portfolio
-    # computed based on signal ranking, the new portfolio is held along with
-    # the other (hd - 1) portfolios carried over from the previous months.
+    # computed based on signal ranking.
     for m in signals['DATE'].unique():
         rows = signals[signals['DATE'] == m]  # select data on that date
         rows = rows.set_index('PERMNO')  # set 'PERMNO' as index
-        lagged_rets = rows['SIGNAL']  # the 'SIGNAL' column
-        deciles = pd.qcut(lagged_rets.rank(method='first'), 10, labels=False)  # cut into deciles based on signal ranking
-        winners[m] = deciles[deciles == 9].index.tolist()  # winner decile
-        losers[m] = deciles[deciles == 0].index.tolist()  # loser decile
+        cum_rets = rows['SIGNAL']  # the 'SIGNAL' column
+        quintiles = pd.qcut(cum_rets.rank(method='first'), 5, labels=False)  # cut into quintiles based on signal ranking
+        winners[m] = quintiles[quintiles == 4].index.tolist()  # winner quintile
+        losers[m] = quintiles[quintiles == 0].index.tolist()  # loser quintile
 
     return winners, losers
 
@@ -119,35 +109,21 @@ def calc_monthly_rets(*args):
     portfolios, hd = args
     winners, losers = portfolios
 
-    monthly_rets = {'w': {},  # winner
-                    'l': {},  # loser
-                    'ls': {}}  # long-short
+    monthly_rets = {'w': {},
+                    'l': {},
+                    'ls': {}}
 
     months = sorted(winners.keys())  # all the months; winners and losers have the same keys
-    for i, current_month in enumerate(months):
-        if current_month < START:  # still in "warm-up" period
-            continue
-        # in each month, the return is calculated as the equally weighted average
-        # of the returns from the hd separate portfolios.
-        current_month_rets = {'w': [],
-                              'l': [],
-                              'ls': []}
-        data = MSF[(MSF['DATE'] == current_month) & (MSF['RET'].notna())]  # select data; "RET" not NaN
-        data = data.set_index('PERMNO')  # set "PERMNO" as index
-        for n in range(hd):
-            m = months[i-n]
-            w = winners[m]  # the winner portfolio
-            l = losers[m]  # the loser portfolio
-            wret = helper_calc_port_ret_in_month(w, data)  # w's return in the currrent month
-            lret = helper_calc_port_ret_in_month(l, data)  # l's return in the currrent month
-            current_month_rets['w'].append(wret)
-            current_month_rets['l'].append(lret)
-            current_month_rets['ls'].append(lret - wret)  # long loser, short winner
-
-        # the equally weighted average
-        monthly_rets['w'][current_month] = np.mean(current_month_rets['w'])
-        monthly_rets['l'][current_month] = np.mean(current_month_rets['l'])
-        monthly_rets['ls'][current_month] = np.mean(current_month_rets['ls'])
+    for current_month in months:
+        data = MSF[(MSF['DATE'] == current_month) & (MSF['RET'].notna())]
+        data = data.set_index('PERMNO')
+        w = winners[current_month]  # the winner portfolio
+        l = losers[current_month]  # the loser portfolio
+        wret = helper_calc_port_ret_in_month(w, data)  # w's return in the currrent month
+        lret = helper_calc_port_ret_in_month(l, data)  # l's return in the currrent month
+        monthly_rets['w'][current_month] = wret
+        monthly_rets['l'][current_month] = lret
+        monthly_rets['ls'][current_month] = wret - lret  # long winner, short loser
 
     return monthly_rets
 
@@ -155,7 +131,7 @@ def calc_monthly_rets(*args):
 #%%
 
 # look back periods & holding periods
-LOOK_BACK = [1]
+LOOK_BACK = [11]
 HOLDING   = [1]
 
 
