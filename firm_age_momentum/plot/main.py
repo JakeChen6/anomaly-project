@@ -1,23 +1,9 @@
 ''' Create a simple strategy performance dashboard.
 
-Choose stocks to compare in the drop down widgets, and make selections
-on the plots to update the summary and histograms accordingly.
-
-.. note::
-    Running this example requires downloading sample data. See
-    the included `README`_ for more information.
-
-Use the ``bokeh serve`` command to run the example by executing:
-
-    bokeh serve stocks
-
-at your command prompt. Then navigate to the URL
-
-    http://localhost:5006/stocks
-
-.. _README: https://github.com/bokeh/bokeh/blob/master/examples/app/stocks/README.md
+Make selections on the plots to update the statistics summary accordingly.
 
 '''
+
 from functools import lru_cache
 import pickle as pk
 
@@ -32,14 +18,14 @@ from bokeh.plotting import figure
 
 ENV_PATH = '/Users/zhishe/myProjects/anomaly'
 
-NAME = 'short_term_reversal'
+NAME = 'firm_age_momentum'
 
 DATA_DIR = ENV_PATH + f'/results/{NAME}/plots'
 
 with open(DATA_DIR + '/monthly_returns.pkl', 'rb') as f:
     MONTHLY_RETS = pk.load(f)
 
-LOOK_BACK = ['1']
+LOOK_BACK = ['11']
 HOLDING = ['1']
 
 
@@ -50,6 +36,10 @@ def get_data(lb, hd):
     data = pd.DataFrame(monthly_rets)
     data.index.name='date'
     data.sort_index(inplace=True)
+    return data
+
+
+def calc_netval_and_drawdown(data):
     data['w_netval'] = (data['w'] + 1).cumprod()
     data['l_netval'] = (data['l'] + 1).cumprod()
     data['ls_netval'] = (data['ls'] + 1).cumprod()
@@ -104,11 +94,11 @@ def holding_change(attrname, old, new):
 def update(selected=None):
     lb, hd = lookback.value, holding.value
 
-    df = get_data(lb, hd)
-    data = df[['w_netval', 'l_netval', 'ls_netval']]
-    source.data = data
+    data = get_data(lb, hd)
+    data = calc_netval_and_drawdown(data)  # calculate net value and drawdown
+    source.data = data[['w_netval', 'l_netval', 'ls_netval']]  # only need net values
 
-    update_stats(df)
+    update_stats(data)
 
     ts1.title.text, ts2.title.text, ts3.title.text = 'Winner', 'Loser', 'Long-Short'
 
@@ -118,8 +108,14 @@ def update_stats(data):
     df.loc['avg monthly ret'] = rets.mean(axis=0)
     df.loc['t-statistic'] = rets.apply(lambda x: sci_stats.ttest_1samp(x, 0).statistic, axis=0)
     df.loc['sharpe ratio'] = df.loc['avg monthly ret'] / rets.std(axis=0) * np.sqrt(12)  # scaled to annual
+    # calculate positive month %
+    for col in df.columns:
+        s = rets[col]
+        df.loc['positive month %', col] = s[s > 0].shape[0] / s.shape[0]
+    # calculate maximum drawdown
     for col in df.columns:
         df.loc['max drawdown', col] = data[f'{col}_drawdown'].min()
+
     stats.text = str(df)
 
 lookback.on_change('value', lookback_change)
@@ -132,6 +128,7 @@ def selection_change(attrname, old, new):
     selected = source.selected.indices
     if selected:
         data = data.iloc[selected, :]
+    data = calc_netval_and_drawdown(data)  # calculate net value and drawdown
     update_stats(data)
 
 source.selected.on_change('indices', selection_change)
