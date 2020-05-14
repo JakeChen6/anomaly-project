@@ -11,21 +11,20 @@ import pandas as pd
 
 ENV_PATH = '/Users/zhishe/myProjects/anomaly'
 
-NAME = 'short_term_reversal'
+NAME = 'firm_age_momentum'
 
 
 #%%
 
 # Filter
 
-# common stocks only
-#COMMON_STOCKS = [10, 11]
+EXCH_CODE = [1, 2, 3]  # listed on NYSE, AMEX, or NASDAQ
 
-# exclude penny stocks
-PRICE_LIMIT = 5
+PRICE_LIMIT = 5  # exclude stocks with a price below $5 at the portfolio formation date
 
-# listed on NYSE, AMEX, or NASDAQ
-EXCH_CODE = [1, 2, 3]
+HISTORY_REQUIREMENT = 12  # exclude firms with less than 12 months of past return data
+
+#COMMON_STOCKS = [10, 11]  # exclude non-common stocks
 
 
 #%%
@@ -48,9 +47,6 @@ DATE_RANGE.sort()
 
 # Apply filter
 
-# exclude penny stocks
-MSF = MSF[MSF['PRC'].abs() >= PRICE_LIMIT].copy()
-
 # listed on NYSE, AMEX, or NASDAQ
 conds = (MSF['HEXCD'] == c for c in EXCH_CODE)
 cond = reduce(lambda x, y: x | y, conds)
@@ -61,12 +57,12 @@ MSF = MSF[cond].copy()
 
 # Define signal calculation process
 
-# signal: one-month lagged returns
+# signal: returns from month t-11 to t-1, 
 
 
-def get_lagged_returns(m):
+def calc_past_cum_rets(m):
     """
-    Get the one-month lagged returns for all the stocks.
+    Calculate returns from month t-11 to t-1.
 
     Parameters
     ----------
@@ -78,18 +74,48 @@ def get_lagged_returns(m):
     pd.Series
 
     """
-    # select data
-    prev_month = DATE_RANGE[DATE_RANGE < m][-1]  # previous month
-    data = MSF[MSF['DATE'] == prev_month]
+    # get data in the past 11 months
+    start, end = DATE_RANGE[DATE_RANGE < m][[-11, -1]]
+    data = MSF[
+        (MSF['DATE'] >= start) &
+        (MSF['DATE'] <= end)
+        ]
 
-    # only include common stocks
-    common_stock_permno = COMMON_STOCK_PERMNO[prev_month]
-
+    # set PERMNO as index
     data = data.set_index('PERMNO')
-    index = set(data.index) & set(common_stock_permno)
-    data = data.loc[index]  # only keep common stocks
 
-    return data['RET'].dropna()
+    # exclude stocks with a price < $5 at the portfolio formation date
+    below_5 = data[
+        (data['DATE'] == end) &
+        (data['PRC'].abs() < PRICE_LIMIT)
+        ]
+    data.drop(below_5.index, inplace=True)
+
+    # exclude non-common stocks
+    common_stock_permno = COMMON_STOCK_PERMNO[end]
+    permno_non_common = set(data.index) - set(common_stock_permno)
+    data.drop(permno_non_common, inplace=True)
+
+    # exclude firms with less than 12 months of past return data
+    past_data = MSF[MSF['DATE'] <= end]
+    past_data = past_data.set_index('PERMNO')  # set PERMNO as index
+    ret_data_months = past_data.groupby(past_data.index).count()['RET']  # count months with non-NaN return
+    less_than_12_months = ret_data_months[ret_data_months < HISTORY_REQUIREMENT]
+    less_than_12_months = less_than_12_months.index.intersection(data.index).unique()
+    data.drop(less_than_12_months, inplace=True)
+
+    # focus on "high uncertainty" stocks
+    firm_ages = past_data.groupby(past_data.index).count()['DATE']
+    firm_ages = firm_ages.loc[data.index.unique()]
+    quintiles = pd.qcut(firm_ages.rank(method='first'), 5, labels=False)  # cut into deciles based on firm age
+    uncertain = quintiles[quintiles == 0]  # stocks with the least firm age
+    data = data.loc[uncertain.index]
+
+    # cumulative returns in the past 11 months
+    cum_rets = (data['RET'] + 1).groupby(level=0).prod(min_count=1)
+    cum_rets.dropna(inplace=True)  # drop NaN
+
+    return cum_rets
 
 
 def get_signals(args):
@@ -100,7 +126,7 @@ def get_signals(args):
     """
     subrange, lb = args
 
-    signals = {m: get_lagged_returns(m) for m in subrange}
+    signals = {m: calc_past_cum_rets(m) for m in subrange}
 
     return signals
 
@@ -111,11 +137,11 @@ CPU_COUNT = psutil.cpu_count(logical=False)
 
 COLLECTOR = {}  # the container where we store the computation results
 
-START = 1934
+START = 1983
 END   = 2018
 
 # look back periods & holding periods
-LOOK_BACK = [1]
+LOOK_BACK = [11]
 HOLDING   = [1]
 
 START = DATE_RANGE[DATE_RANGE >= np.datetime64(dt.date(START, 1, 1))][0]
