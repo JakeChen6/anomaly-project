@@ -56,6 +56,38 @@ MSF = MSF[MSF['HEXCD'] == EXCH_CODE[0]].copy()
 
 #%%
 
+def calc_mkr_idx():
+    """
+    Calculate each month's market index value.
+
+    Returns
+    -------
+    dict
+
+    """
+    mkt_idx = dict()
+    for m in MSF['DATE'].unique():
+        data = MSF[MSF['DATE'] == m]  # data of that month
+        # only keep common stocks
+        common_stock_permno = COMMON_STOCK_PERMNO[m]
+        data = data.set_index('PERMNO')
+        index = set(data.index) & set(common_stock_permno)
+        data = data.loc[index]
+        mkt_idx[m] = data['RET'].mean()  # market index is the average return of all the stocks
+    return mkt_idx
+
+
+if os.path.exists(ENV_PATH + f'/results/{NAME}/market_index.pkl'):
+    with open(ENV_PATH + f'/results/{NAME}/market_index.pkl', 'rb') as f:
+        MKT_IDX = pk.load(f)
+else:
+    MKT_IDX = calc_mkr_idx()
+    with open(ENV_PATH + f'/results/{NAME}/market_index.pkl', 'wb') as f:
+        pk.dump(MKT_IDX, f)
+
+
+#%%
+
 # Define signal calculation process
 
 # signal: cumulative excess returns for the prior 36 months
@@ -75,8 +107,8 @@ def get_prior_cum_excess_rets(m):
     pd.Series
 
     """
-    data = MSF[MSF['DATE'] < m]
     prev_month = DATE_RANGE[DATE_RANGE < m][-1]
+    data = MSF[MSF['DATE'] <= prev_month]
 
     # only include common stocks
     common_stock_permno = COMMON_STOCK_PERMNO[prev_month]
@@ -93,17 +125,12 @@ def get_prior_cum_excess_rets(m):
     data = grouped.filter(lambda x: x['DATE'].count() >= 84)
 
     # now we are ready to calculate the signals
-    mkt_idx = dict()
     cum_excess_rets = dict()
     for p in data.index.unique():
         subdata = data.loc[p].sort_values('DATE').iloc[-36:]  # prior 36 months' data
         subdata = subdata.set_index('DATE')
-        # prepare the market index values first
-        for idx in subdata.index:
-            if idx not in mkt_idx:
-                mkt_idx[idx] = data[data['DATE'] == idx]['RET'].mean()
         # calculate the cumulative excess returns
-        cum_excess_rets[p] = sum(row['RET'] - mkt_idx[idx] for idx, row in subdata.iterrows())
+        cum_excess_rets[p] = sum(row['RET'] - MKT_IDX[idx.to_numpy()] for idx, row in subdata.iterrows())
 
     # save in a pd.Series
     series = pd.Series(cum_excess_rets)
