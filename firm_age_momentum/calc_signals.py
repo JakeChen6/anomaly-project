@@ -107,7 +107,7 @@ def calc_past_cum_rets(m):
     # focus on "high uncertainty" stocks
     firm_ages = past_data.groupby(past_data.index).count()['DATE']
     firm_ages = firm_ages.loc[data.index.unique()]
-    quintiles = pd.qcut(firm_ages.rank(method='first'), 5, labels=False)  # cut into deciles based on firm age
+    quintiles = pd.qcut(firm_ages.rank(method='first'), 5, labels=False)  # cut into quintiles based on firm age
     uncertain = quintiles[quintiles == 0]  # stocks with the least firm age
     data = data.loc[uncertain.index]
 
