@@ -84,6 +84,8 @@ def helper_calc_port_ret_in_month(portfolio, data):
     """
     permnos = set(portfolio) & set(data.index)  # permnos in both portfolio and data.index
     ret = data.loc[permnos, 'RET'].sum() / len(portfolio)  # return of the equally weighted portfolio
+    #current_month = data['DATE'].iloc[0].to_numpy()
+    #ret = (data.loc[permnos, 'RET'] - MKT_IDX[current_month]).sum() / len(portfolio)  # average excess return
 
     return ret
 
@@ -123,8 +125,13 @@ def calc_monthly_rets(*args):
         three_years = DATE_RANGE[DATE_RANGE >= m][:36]
 
         for current_month in three_years:
-            data = MSF[(MSF['DATE'] == current_month) & (MSF['RET'].notna())]
-            data = data.set_index('PERMNO')  # set "PERMNO" as index
+            data = MSF[(MSF['DATE'] == current_month) & (MSF['RET'].notna())]  # RET not NaN
+            data = data.set_index('PERMNO')
+            # if a security's return is missing in a month, then the stock is
+            # permanently dropped from the portfolio.
+            #w = list(set(w) & set(data.index))
+            #l = list(set(l) & set(data.index))
+
             wret = helper_calc_port_ret_in_month(w, data)  # w's return in the currrent month
             lret = helper_calc_port_ret_in_month(l, data)  # l's return in the currrent month
             monthly_rets['w'][current_month] = wret
