@@ -107,7 +107,9 @@ def update_stats(data):
     rets = data[['w', 'l', 'ls']]
     df.loc['avg monthly ret'] = rets.mean(axis=0)
     df.loc['t-statistic'] = rets.apply(lambda x: sci_stats.ttest_1samp(x, 0).statistic, axis=0)
-    df.loc['sharpe ratio'] = df.loc['avg monthly ret'] / rets.std(axis=0) * np.sqrt(12)  # scaled to annual
+    df.loc['skew'] = rets.apply(lambda x: x.skew(), axis=0)  # skewness
+    df.loc['kurtosis'] = rets.apply(lambda x: x.kurtosis(), axis=0)  # kurtosis
+    df.loc['sharpe ratio'] = df.loc['avg monthly ret'] / rets.std(axis=0) * np.sqrt(12)  # annual sharpe ratio
     # calculate positive month %
     for col in df.columns:
         s = rets[col]
