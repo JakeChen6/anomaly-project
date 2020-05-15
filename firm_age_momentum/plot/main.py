@@ -146,7 +146,7 @@ layout = column(title, main_row, series)
 update()
 
 curdoc().add_root(layout)
-curdoc().title = "Stocks"
+curdoc().title = NAME
 
 
 
