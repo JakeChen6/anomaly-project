@@ -40,6 +40,7 @@ def get_data(lb, hd):
 
 
 def calc_netval_and_drawdown(data):
+    data = data.copy()
     data['w_netval'] = (data['w'] + 1).cumprod()
     data['l_netval'] = (data['l'] + 1).cumprod()
     data['ls_netval'] = (data['ls'] + 1).cumprod()
