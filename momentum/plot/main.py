@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+#%%
 
 
 from functools import lru_cache
@@ -19,7 +19,7 @@ from bokeh.plotting import figure
 DIR = '/Users/zhishe/myProjects/anomaly'
 
 
-# In[ ]:
+#%%
 
 
 # anomaly setting
@@ -30,7 +30,7 @@ LOOK_BACK = ['3', '6', '9', '12']
 HOLDING = ['3', '6', '9', '12']
 
 
-# In[ ]:
+#%%
 
 
 # read data
@@ -39,7 +39,7 @@ with open(DIR + f'/results/{NAME}/returns/monthly_returns.pkl', 'rb') as f:
     MONTHLY_RETS = pk.load(f)
 
 
-# In[ ]:
+#%%
 
 
 @lru_cache()
@@ -63,7 +63,7 @@ def calc_netval_and_drawdown(data):
     return data
 
 
-# In[ ]:
+#%%
 
 
 title = PreText(text=NAME, width=500)
@@ -104,7 +104,7 @@ ts2.x_range = ts1.x_range
 ts3.x_range = ts1.x_range
 
 
-# In[ ]:
+#%%
 
 
 # set up callbacks
@@ -179,7 +179,7 @@ button.on_click(button_click)
 source.selected.on_change('indices', selection_change)
 
 
-# In[ ]:
+#%%
 
 
 # set up layout
