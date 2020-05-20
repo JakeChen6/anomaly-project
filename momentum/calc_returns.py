@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+#%%
 
 
 import os
@@ -15,7 +15,7 @@ import pandas as pd
 DIR = '/Users/zhishe/myProjects/anomaly'
 
 
-# In[ ]:
+#%%
 
 
 # anomaly setting
@@ -28,7 +28,7 @@ LOOK_BACK = [3, 6, 9, 12]
 HOLDING = [3, 6, 9, 12]
 
 
-# In[ ]:
+#%%
 
 
 # read data
@@ -39,13 +39,13 @@ DATE_RANGE = MSF.DATE.unique()
 DATE_RANGE.sort()
 
 
-# In[ ]:
+#%%
 
 
 START = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
 
 
-# In[ ]:
+#%%
 
 
 # return calculation algorithm
@@ -134,7 +134,7 @@ def calc_monthly_rets(*args):
     return monthly_rets
 
 
-# In[ ]:
+#%%
 
 
 def helper_timeit(func, *args):
@@ -144,7 +144,7 @@ def helper_timeit(func, *args):
     return res, te - ts
 
 
-# In[ ]:
+#%%
 
 
 # calculate portfolios
@@ -174,7 +174,7 @@ with open(DIR + f'/results/{NAME}/returns/portfolios.pkl', 'wb') as f:
     pk.dump(collector_portfolios, f)
 
 
-# In[ ]:
+#%%
 
 
 # calculate monthly returns
