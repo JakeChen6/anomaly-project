@@ -40,9 +40,9 @@ Common stocks
 Exclude if price < $5
 """
 
-EXCH_CODE = [1, 2, 3]  # NYSE or AMEX
+EXCH_CODE = [1, 2, 3]  # NYSE, AMEX, NASDAQ
 COMMON_STOCK_CD = [10, 11]  # only common stocks
-PRICE_LIMIT = 5. # not less than a dollar
+PRICE_LIMIT = 5. # Exclude if price < $5
 
 
 #%%
