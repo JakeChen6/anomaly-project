@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+#%%
 
 
 import os
@@ -15,7 +15,7 @@ import vaex
 DIR = '/Users/zhishe/myProjects/anomaly'
 
 
-# In[ ]:
+#%%
 
 
 # anomaly setting
@@ -28,7 +28,7 @@ LOOK_BACK = [6]
 HOLDING = [6]
 
 
-# In[ ]:
+#%%
 
 
 # constraints
@@ -38,16 +38,16 @@ HOLDING = [6]
 NYSE, AMEX
 At least two years of data prior to the formation date (in CRSP for at least 2 years)
 Common stocks
-Not less than a dollar
+Exclude if price < $1
 """
 
 EXCH_CODE = [1, 2]  # NYSE or AMEX
 HISTORY_LIMIT = 2  # in CRSP for at least 2 years
 COMMON_STOCK_CD = [10, 11]  # only common stocks
-PRICE_LIMIT = 1. # not less than a dollar
+PRICE_LIMIT = 1. # Exclude if price < $1
 
 
-# In[ ]:
+#%%
 
 
 # read data
@@ -62,13 +62,16 @@ DATE_RANGE = MSF.DATE.unique()
 DATE_RANGE.sort()
 
 
-# In[ ]:
+#%%
 
 
 # signal calculation algorithm
 
 # average daily turnover in percentage during the portfolio formation period
 # the daily turnover is defined as the ratio of VOL to SHROUT
+
+# we need to adjust SHROUT/VOL, but since when we compute VOL / SHROUT, the
+# adjusting is cancelled out, actually no need to adjust.
 
 def calc_avg_daily_turnover(m, lb):
     """
@@ -83,7 +86,7 @@ def calc_avg_daily_turnover(m, lb):
     data = DSF[DSF.DATE == end]  # data on the last day prior to the formation date
     # apply constraints
     data = data[data.HEXCD.isin(EXCH_CODE)]  # exchange constraint
-    data = data[data.PRC.abs() >= PRICE_LIMIT]  # price constraint
+    data = data[data.PRC.abs() / data.CFACPR >= PRICE_LIMIT]  # price constraint (prices adjusted)
 
     common_stock_permno = COMMON_STOCK_PERMNO[end]  # PERMNO of common stocks according to information on 'end'
     data = data[data.PERMNO.isin(common_stock_permno)]  # common stock constraint
@@ -98,6 +101,8 @@ def calc_avg_daily_turnover(m, lb):
     # get data in the past lb months for the eligible stocks
     eligible_permno = data.PERMNO.values
     data = DSF[(DSF.DATE >= start) & (DSF.DATE <= end) & (DSF.PERMNO.isin(eligible_permno))]
+
+    # average daily turnover in percentage during the portfolio formation period
     data = data[['PERMNO', 'VOL', 'SHROUT']].to_pandas_df()
     avg_daily_turnover = data.groupby('PERMNO').apply(lambda df: (df['VOL'] / df['SHROUT']).mean() * 100)  # in percentage
     avg_daily_turnover.dropna(inplace=True)
@@ -116,8 +121,7 @@ def calc_signals(args):
     return signals
 
 
-# In[ ]:
-
+#%%
 
 # single process
 
@@ -139,7 +143,7 @@ for lb in LOOK_BACK:
     collector.setdefault(lb, {}).update(signals)
 
 
-# In[ ]:
+#%%
 
 
 # save results to local
