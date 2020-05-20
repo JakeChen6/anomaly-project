@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+#%%
 
 
 import os
@@ -15,7 +15,7 @@ import pandas as pd
 DIR = '/Users/zhishe/myProjects/anomaly'
 
 
-# In[ ]:
+#%%
 
 
 # anomaly setting
@@ -28,16 +28,16 @@ LOOK_BACK = [3, 6, 9, 12]
 HOLDING = [3, 6, 9, 12]
 
 
-# In[ ]:
+#%%
 
 
 # constraints
 
 """
-1965 - 1995
+1965 - 1989
 NYSE, AMEX, NASDAQ
 Common stocks
-Not less than 5 dollar
+Exclude if price < $5
 """
 
 EXCH_CODE = [1, 2, 3]  # NYSE or AMEX
@@ -45,12 +45,13 @@ COMMON_STOCK_CD = [10, 11]  # only common stocks
 PRICE_LIMIT = 5. # not less than a dollar
 
 
-# In[ ]:
+#%%
 
 
 # read data
 
 MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
+MSF.PRC /= MSF.CFACPR  # adjust prices
 
 with open(DIR + '/data/common_stock_permno.pkl', 'rb') as f:
     COMMON_STOCK_PERMNO = pk.load(f)
@@ -59,7 +60,7 @@ DATE_RANGE = MSF.DATE.unique()
 DATE_RANGE.sort()
 
 
-# In[ ]:
+#%%
 
 
 # signal calculation algorithm
@@ -74,7 +75,7 @@ def calc_cum_ret(m, lb):
     # past lb months
     start, end = DATE_RANGE[DATE_RANGE < m][[-lb, -1]]
 
-    data = MSF[MSF.DATE == end]  # data on the last day prior to the formation date
+    data = MSF[MSF.DATE == end]  # data of month m-1
     # apply constraints
     data = data[data.HEXCD.isin(EXCH_CODE)]  # exchange constraint
     data = data[data.PRC.abs() >= PRICE_LIMIT]  # price constraint
@@ -100,7 +101,7 @@ def calc_signals(args):
     return signals
 
 
-# In[ ]:
+#%%
 
 
 # distribute computations to multiple CPUs
@@ -139,7 +140,7 @@ for lb in LOOK_BACK:
         print('{:.2f}s'.format(te - ts))
 
 
-# In[ ]:
+#%%
 
 
 # save results to local
