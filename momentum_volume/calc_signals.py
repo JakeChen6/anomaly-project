@@ -83,9 +83,10 @@ def calc_avg_daily_turnover(m, lb):
     # past lb months
     start, end = DATE_RANGE[DATE_RANGE < m][[-lb, -1]]
 
-    data = DSF[DSF.DATE == end]  # data on the last day prior to the formation date
+    data = DSF[DSF.DATE == end].to_pandas_df()  # data on the last day prior to the formation date
     # apply constraints
     data = data[data.HEXCD.isin(EXCH_CODE)]  # exchange constraint
+    data = data[data.CFACPR != 0.]  # exclude erroneous rows
     data = data[data.PRC.abs() / data.CFACPR >= PRICE_LIMIT]  # price constraint (prices adjusted)
 
     common_stock_permno = COMMON_STOCK_PERMNO[end]  # PERMNO of common stocks according to information on 'end'
