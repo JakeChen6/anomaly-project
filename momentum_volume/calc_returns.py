@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+#%%
 
 
 import os
@@ -15,7 +15,7 @@ import pandas as pd
 DIR = '/Users/zhishe/myProjects/anomaly'
 
 
-# In[ ]:
+#%%
 
 
 # anomaly setting
@@ -28,7 +28,7 @@ LOOK_BACK = [6]
 HOLDING = [6]
 
 
-# In[ ]:
+#%%
 
 
 # read data
@@ -39,13 +39,13 @@ DATE_RANGE = MSF.DATE.unique()
 DATE_RANGE.sort()
 
 
-# In[ ]:
+#%%
 
 
 START = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
 
 
-# In[ ]:
+#%%
 
 
 # return calculation algorithm
@@ -53,6 +53,8 @@ START = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
 # given signals, calculate portfolio series;
 # given portfolio series, calculate monthly return series;
 # given monthly return series, display plots and statistics.
+
+CUT = 3
 
 def calc_portfolios(lb):
     """
@@ -76,8 +78,8 @@ def calc_portfolios(lb):
     for month in avg_daily_turnover.DATE.unique():
         rows = avg_daily_turnover[avg_daily_turnover.DATE == month]
         rows = rows.set_index('PERMNO')
-        cut = pd.qcut(rows.avg_daily_turnover.rank(method='first'), 3, labels=False)
-        eligible = cut[cut == 2].index
+        cut = pd.qcut(rows.avg_daily_turnover.rank(method='first'), CUT, labels=False)
+        eligible = cut[cut == CUT-1].index  # high volume group
 
         rows = cum_rets[(cum_rets.DATE == month) & (cum_rets.PERMNO.isin(eligible))]
         rows = rows.set_index('PERMNO')
@@ -142,7 +144,7 @@ def calc_monthly_rets(*args):
     return monthly_rets
 
 
-# In[ ]:
+#%%
 
 
 def helper_timeit(func, *args):
@@ -152,7 +154,7 @@ def helper_timeit(func, *args):
     return res, te - ts
 
 
-# In[ ]:
+#%%
 
 
 # calculate portfolios
@@ -182,7 +184,7 @@ with open(DIR + f'/results/{NAME}/returns/portfolios.pkl', 'wb') as f:
     pk.dump(collector_portfolios, f)
 
 
-# In[ ]:
+#%%
 
 
 # calculate monthly returns
