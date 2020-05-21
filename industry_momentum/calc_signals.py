@@ -1,34 +1,31 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+#%%
+
+
 import os
 import time
-import datetime as dt
 import pickle as pk
-from functools import reduce
 from concurrent import futures
 
-import psutil
 import numpy as np
 import pandas as pd
 
-ENV_PATH = '/Users/zhishe/myProjects/anomaly'
+DIR = '/Users/zhishe/myProjects/anomaly'
+
+
+#%%
+
+
+# anomaly setting
 
 NAME = 'industry_momentum'
 
-
-#%%
-
-# Filter
-
-# common stocks only
-#COMMON_STOCKS = [10, 11]
-
-# exclude penny stocks
-PRICE_LIMIT = 5
-
-# listed on NYSE, AMEX, or NASDAQ
-EXCH_CODE = [1, 2, 3]
-
-
-#%%
+START = 1963
+END = 2018
+LOOK_BACK = [6]
+HOLDING = [6]
 
 # SIC codes
 SIC = {'Mining': list(range(10, 15)),
@@ -80,75 +77,80 @@ INDUSTRY = [
 
 #%%
 
-# Read data
 
-# monthly stock data
-MSF = pd.read_hdf(ENV_PATH + '/data/msf.h5', key='msf')
+# constraints
 
-# common stocks - PERMNOs
-with open(ENV_PATH + '/data/common_stock_permno.pkl', 'rb') as f:
+"""
+1963 - 1995
+NYSE, AMEX, NASDAQ
+Common stocks
+Exclude if price < $5
+"""
+
+EXCH_CODE = [1, 2, 3]  # NYSE, AMEX, NASDAQ
+COMMON_STOCK_CD = [10, 11]  # only common stocks
+PRICE_LIMIT = 5. # Exclude if price < $5
+
+
+#%%
+
+
+# read data
+
+MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
+MSF.PRC /= MSF.CFACPR  # adjust prices
+
+with open(DIR + '/data/common_stock_permno.pkl', 'rb') as f:
     COMMON_STOCK_PERMNO = pk.load(f)
 
-# Transform HSICCD to two-digit codes
+# transform HSICCD to two-digit codes
 MSF['HSICCD'] //= 10  # three-digit -> two-digit, four-digit -> three-digit
 index = MSF[MSF['HSICCD'] >= 100].index
 MSF.loc[index, 'HSICCD'] //= 10  # three-digit -> two-digit
 
-# range of dates
-DATE_RANGE = MSF['DATE'].unique()
+DATE_RANGE = MSF.DATE.unique()
 DATE_RANGE.sort()
 
 
 #%%
 
-# Apply filter
 
-# exclude penny stocks
-MSF = MSF[MSF['PRC'].abs() >= PRICE_LIMIT].copy()
+# signal calculation algorithm
 
-# listed on NYSE, AMEX, or NASDAQ
-conds = (MSF['HEXCD'] == c for c in EXCH_CODE)
-cond = reduce(lambda x, y: x | y, conds)
-MSF = MSF[cond].copy()
+# value-weighted return, over the past lb months, of the industry that the stock belongs to.
 
+def helper_get_weights(df):
+    df = df.copy()
+    df['mktcap'] = df.PRC.abs() * df.SHROUT
+    df.sort_values('DATE', inplace=True)
 
-#%%
+    weights = df.groupby(level=0).mktcap.apply(
+        lambda s: s.dropna().iloc[-1] if not s.dropna().empty else np.nan)
 
-# Define signal calculation process
+    weights /= weights.sum()
 
-# signal: for each stock, its signal is the value-weighted return, over the past
-# lb months, of the industry that the stock belongs to.
-
-
-def get_weights(data):
-    data = data.reset_index()
-    data.sort_values(by='DATE', inplace=True)
-    data = data.drop_duplicates(subset=['PERMNO'], keep='last')
-    data.set_index('PERMNO', inplace=True)
-    data['mktcap'] = data['PRC'].abs() * data['SHROUT']
-    data['weight'] = data['mktcap'] / data['mktcap'].sum()
-
-    return data['weight']
+    return weights
 
 
-def calc_past_industry_rets(m, lb):
+def calc_past_ind_rets(m, lb):
     """
-    m:      current month
-    lb:     look back period
+    m: np.datetime64
+    lb: int
     """
-    # SELECT data
+    # past lb months
     start, end = DATE_RANGE[DATE_RANGE < m][[-lb, -1]]
-    data = MSF[
-        (MSF['DATE'] >= start) &
-        (MSF['DATE'] <= end)
-    ]
 
-    # only include common stocks
-    common_stock_permno = COMMON_STOCK_PERMNO[end]
+    data = MSF[MSF.DATE == end]  # data of month m-1
+    # apply constraints
+    data = data[data.HEXCD.isin(EXCH_CODE)]  # exchange constraint
+    data = data[data.PRC.abs() >= PRICE_LIMIT]  # price constraint
 
-    data = data.set_index('PERMNO')
-    index = set(data.index) & set(common_stock_permno)
-    data = data.loc[index]  # only keep common stocks
+    common_stock_permno = COMMON_STOCK_PERMNO[end]  # PERMNO of common stocks according to information on 'end'
+    data = data[data.PERMNO.isin(common_stock_permno)]  # common stock constraint
+
+    # get data in the past lb months for the eligible stocks
+    eligible_permno = data.PERMNO.values
+    data = MSF[(MSF.DATE >= start) & (MSF.DATE <= end) & (MSF.PERMNO.isin(eligible_permno))]
 
     # calculate each industry's value-weighted return
     ind_rets = {}
@@ -156,110 +158,92 @@ def calc_past_industry_rets(m, lb):
     for ind in INDUSTRY:
         if ind != 'Other':
             siccd = SIC[ind]
-
-            # SELECT data WHERE HSICCD is siccd or in siccd
             if isinstance(siccd, list):
-                conds = (data['HSICCD'] == c for c in siccd)
-                cond = reduce(lambda x, y: x | y, conds)
+                rows = data[data.HSICCD.isin(siccd)]
             else:
-                cond = data['HSICCD'] == siccd
-
-            subdata = data[cond].copy()
-            data.drop(subdata.index, inplace=True)  # what are left finally are stocks in industry 'Other'
+                rows = data[data.HSICCD == siccd]
+            rows = rows.copy()
+            data = data.drop(rows.index)  # what are left finally are stocks in industry 'Other'
         else:
-            subdata = data
+            rows = data
 
         # cumulative return in the past lb months
-        cum_rets = (subdata['RET'] + 1).groupby(level=0).prod(min_count=1)
-        cum_rets.dropna(inplace=True)  # drop NaN
+        rows = rows.set_index('PERMNO')
+        cum_rets = (rows.RET + 1).groupby(level=0).prod(min_count=1)
+        cum_rets.dropna(inplace=True)
+
         # value weight this industry
-        subdata = subdata.loc[cum_rets.index]
-        weights = get_weights(subdata)
+        rows = rows.loc[cum_rets.index]
+        weights = helper_get_weights(rows)
         val_weighted_ret = (cum_rets * weights).sum()
         ind_rets[ind] = {s: val_weighted_ret for s in cum_rets.index}
 
     # save in a pandas.Series
-    stock_ind_rets = pd.Series(dtype=np.float64)
-    for ind, d in ind_rets.items():
-        stock_ind_rets = stock_ind_rets.append(pd.Series(d))
-
-    stock_ind_rets.name = 'RET'
-    stock_ind_rets.index.name = 'PERMNO'
-
-    return stock_ind_rets
+    d = {k: v for val in ind_rets.values() for k, v in val.items()}
+    s = pd.Series(d)
+    s.name = 'RET'
+    s.index.name = 'PERMNO'
+    
+    return s
 
 
-def get_signals(args):
-    """
-    pno:            process identifier
-    subrange:       subset of the date_range
-    lb:             look back period
-    """
-    subrange, lb = args
-
-    # signal: the cumulative return over the past lb months.
-    signals = {m: calc_past_industry_rets(m, lb) for m in subrange}
-
+def calc_signals(args):
+    sub_range, lb = args
+    signals = {m: calc_past_ind_rets(m, lb) for m in sub_range}
     return signals
 
 
 #%%
 
-# Distribute workloads to multiple CPUs
 
-CPU_COUNT = psutil.cpu_count(logical=False)
+# distribute computations to multiple CPUs
 
-COLLECTOR = {}  # the container where we store the computation results
+CPU_COUNT = 8
 
-START = 1963
-END   = 2018
+start = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
+end = DATE_RANGE[DATE_RANGE <= np.datetime64(f'{END}-12-31')][-1]
 
-# look back periods & holding periods
-LOOK_BACK = [6]
-HOLDING   = [6]
-
-# we only specify starting and ending years above, here we infer the starting
-# and ending months.
-START = DATE_RANGE[DATE_RANGE >= np.datetime64(dt.date(START, 7, 1))][0]
-END = DATE_RANGE[DATE_RANGE <= np.datetime64(dt.date(END, 12, 31))][-1]
-
+collector = {}
 
 for lb in LOOK_BACK:
     hd = max(HOLDING)
-    print('\nCalculating (%s, %s) strategy...' % (lb, hd), end='\t')
+    print(f'\nCalculating ({lb}, {hd}) strategy...', end='\t')
 
     # on this date we calculate the first set of signals
-    first_date = DATE_RANGE[DATE_RANGE <= START][-hd]
+    first_date = DATE_RANGE[DATE_RANGE <= start][-hd]
     # calculate signals for every month in this range
-    date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= END)]
-
-    # we will split the task and distribute the workloads to multiple processes
-    size = len(date_range) // CPU_COUNT  # the size of each workload
-    chunks = []
+    date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= end)]
+    
+    # split the workload
+    size = len(date_range) // CPU_COUNT
+    sub_ranges = []
     for i in range(CPU_COUNT):
         if i != CPU_COUNT-1:
-            chunks.append(date_range[size*i:size*(i+1)])
+            sub_ranges.append(date_range[size*i:size*(i+1)])
         else:
-            chunks.append(date_range[size*i:])
+            sub_ranges.append(date_range[size*i:])
 
     with futures.ProcessPoolExecutor(max_workers=CPU_COUNT) as ex:
-        start_time = time.time()
-        res = ex.map(get_signals, zip(chunks, [lb] * CPU_COUNT))
+        ts = time.time()
+        res = ex.map(calc_signals, zip(sub_ranges, [lb] * CPU_COUNT))
         for signals in res:
-            COLLECTOR.setdefault(lb, {}).update(signals)
-        print('{:.2f} s.'.format(time.time() - start_time))
+            collector.setdefault(lb, {}).update(signals)
+        te = time.time()
+        print('{:.2f}s'.format(te - ts))
 
 
 #%%
-# Output
 
-if not os.path.exists(ENV_PATH + f'/results/{NAME}'):
-    os.mkdir(ENV_PATH + f'/results/{NAME}')
-    os.mkdir(ENV_PATH + f'/results/{NAME}/signals')
+
+# save results to local
+
+if not os.path.exists(DIR + f'/results/{NAME}'):
+    os.mkdir(DIR + f'/results/{NAME}')
+    os.mkdir(DIR + f'/results/{NAME}/signals')
 
 for lb in LOOK_BACK:
     table = pd.DataFrame()
-    signals = COLLECTOR[lb]
+    signals = collector[lb]
     # consolidate each month's signals into a single table
     for k, v in signals.items():
         df = pd.DataFrame(v)
@@ -267,8 +251,8 @@ for lb in LOOK_BACK:
         df['DATE'] = k
         table = pd.concat([table, df], ignore_index=True)
 
-    table.rename(columns={'RET': 'SIGNAL'}, inplace=True)
-    table = table.reindex(columns=['DATE', 'PERMNO', 'SIGNAL'])  # reorder the columns
-    table.sort_values(by='DATE', inplace=True)  # sort by 'DATE'
-    table.to_csv(ENV_PATH + f'/results/{NAME}/signals/{lb}.csv')  # write to a CSV
-    print('%s done.' % lb)
+    table = table.reindex(columns=['DATE', 'PERMNO', 'RET'])
+    table.sort_values(by='DATE', inplace=True)
+    table.to_csv(DIR + f'/results/{NAME}/signals/{lb}.csv')
+    print(f'{lb} done.')
+
