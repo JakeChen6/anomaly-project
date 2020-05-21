@@ -1,190 +1,168 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+#%%
+
+
 import os
 import time
-import datetime as dt
 import pickle as pk
-from functools import reduce
 from concurrent import futures
 
-import psutil
 import numpy as np
 import pandas as pd
 
-ENV_PATH = '/Users/zhishe/myProjects/anomaly'
+DIR = '/Users/zhishe/myProjects/anomaly'
+
+
+#%%
+
+
+# anomaly setting
 
 NAME = 'firm_age_momentum'
 
+START = 1983
+END = 2018
+LOOK_BACK = [11]
+HOLDING = [1]
+
 
 #%%
 
-# Filter
 
-EXCH_CODE = [1, 2, 3]  # listed on NYSE, AMEX, or NASDAQ
+# constraints
 
-PRICE_LIMIT = 5  # exclude stocks with a price below $5 at the portfolio formation date
+"""
+1983 - 2001
+NYSE, AMEX, NASDAQ
+Common stocks
+Exclude if price < $5
+Exclude firms with less than 12 months of past return data
+"""
 
+EXCH_CODE = [1, 2, 3]  # NYSE, AMEX, NASDAQ
+COMMON_STOCK_CD = [10, 11]  # only common stocks
+PRICE_LIMIT = 5. # Exclude if price < $5
 HISTORY_REQUIREMENT = 12  # exclude firms with less than 12 months of past return data
 
-#COMMON_STOCKS = [10, 11]  # exclude non-common stocks
-
 
 #%%
 
-# Read data
 
-# monthly stock data
-MSF = pd.read_hdf(ENV_PATH + '/data/msf.h5', key='msf')
+# read data
 
-# common stocks - PERMNOs
-with open(ENV_PATH + '/data/common_stock_permno.pkl', 'rb') as f:
+MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
+MSF.PRC /= MSF.CFACPR  # adjust prices
+
+with open(DIR + '/data/common_stock_permno.pkl', 'rb') as f:
     COMMON_STOCK_PERMNO = pk.load(f)
 
-# range of dates
-DATE_RANGE = MSF['DATE'].unique()
+DATE_RANGE = MSF.DATE.unique()
 DATE_RANGE.sort()
 
 
 #%%
 
-# Apply filter
 
-# listed on NYSE, AMEX, or NASDAQ
-conds = (MSF['HEXCD'] == c for c in EXCH_CODE)
-cond = reduce(lambda x, y: x | y, conds)
-MSF = MSF[cond].copy()
+# signal calculation algorithm
 
+# returns from month t-11 to t-1
 
-#%%
+CUT = 5
 
-# Define signal calculation process
-
-# signal: returns from month t-11 to t-1, 
-
-
-def calc_past_cum_rets(m):
+def calc_cum_ret(m, lb):
     """
-    Calculate returns from month t-11 to t-1.
-
-    Parameters
-    ----------
-    m : np.datetime64
-        current month
-
-    Returns
-    -------
-    pd.Series
-
+    m: np.datetime64
+    lb: int
     """
-    # get data in the past 11 months
-    start, end = DATE_RANGE[DATE_RANGE < m][[-11, -1]]
-    data = MSF[
-        (MSF['DATE'] >= start) &
-        (MSF['DATE'] <= end)
-        ]
+    # past lb months
+    start, end = DATE_RANGE[DATE_RANGE < m][[-lb, -1]]
 
-    # set PERMNO as index
-    data = data.set_index('PERMNO')
+    data = MSF[MSF.DATE == end]  # data of month m-1
+    # apply constraints
+    data = data[data.HEXCD.isin(EXCH_CODE)]  # exchange constraint
+    data = data[data.PRC.abs() >= PRICE_LIMIT]  # price constraint
 
-    # exclude stocks with a price < $5 at the portfolio formation date
-    below_5 = data[
-        (data['DATE'] == end) &
-        (data['PRC'].abs() < PRICE_LIMIT)
-        ]
-    data.drop(below_5.index, inplace=True)
+    common_stock_permno = COMMON_STOCK_PERMNO[end]  # PERMNO of common stocks according to information on 'end'
+    data = data[data.PERMNO.isin(common_stock_permno)]  # common stock constraint
 
-    # exclude non-common stocks
-    common_stock_permno = COMMON_STOCK_PERMNO[end]
-    permno_non_common = set(data.index) - set(common_stock_permno)
-    data.drop(permno_non_common, inplace=True)
-
-    # exclude firms with less than 12 months of past return data
-    past_data = MSF[MSF['DATE'] <= end]
-    past_data = past_data.set_index('PERMNO')  # set PERMNO as index
-    ret_data_months = past_data.groupby(past_data.index).count()['RET']  # count months with non-NaN return
-    less_than_12_months = ret_data_months[ret_data_months < HISTORY_REQUIREMENT]
-    less_than_12_months = less_than_12_months.index.intersection(data.index).unique()
-    data.drop(less_than_12_months, inplace=True)
+    past_data = MSF[(MSF.PERMNO.isin(data.PERMNO.values)) & (MSF.DATE <= end)]
+    ret_data_months = past_data.groupby('PERMNO').RET.count()  # compute months of return data, excluding missing values
+    ret_data_months = ret_data_months[ret_data_months >= HISTORY_REQUIREMENT]  # history constraint
 
     # focus on "high uncertainty" stocks
-    firm_ages = past_data.groupby(past_data.index).count()['DATE']
-    firm_ages = firm_ages.loc[data.index.unique()]
-    quintiles = pd.qcut(firm_ages.rank(method='first'), 5, labels=False)  # cut into quintiles based on firm age
-    uncertain = quintiles[quintiles == 0]  # stocks with the least firm age
-    data = data.loc[uncertain.index]
+    cut = pd.qcut(ret_data_months.rank(method='first'), CUT, labels=False)
+    eligible = cut[cut == 0].index  # stocks with the least firm age
 
-    # cumulative returns in the past 11 months
-    cum_rets = (data['RET'] + 1).groupby(level=0).prod(min_count=1)
-    cum_rets.dropna(inplace=True)  # drop NaN
+    # get data in the past lb months for the eligible stocks
+    data = MSF[(MSF.DATE >= start) & (MSF.DATE <= end) & (MSF.PERMNO.isin(eligible))]
+
+    # cumulative returns in the past lb months
+    data = data.set_index('PERMNO')
+    cum_rets = (data.RET + 1).groupby(level=0).prod(min_count=1)
+    cum_rets.dropna(inplace=True)
 
     return cum_rets
 
 
-def get_signals(args):
-    """
-    pno:            process identifier
-    subrange:       subset of the date_range
-    lb:             look back period
-    """
-    subrange, lb = args
-
-    signals = {m: calc_past_cum_rets(m) for m in subrange}
-
+def calc_signals(args):
+    sub_range, lb = args
+    signals = {m: calc_cum_ret(m, lb) for m in sub_range}
     return signals
 
 
 #%%
 
-CPU_COUNT = psutil.cpu_count(logical=False)
 
-COLLECTOR = {}  # the container where we store the computation results
+# distribute computations to multiple CPUs
 
-START = 1983
-END   = 2018
+CPU_COUNT = 8
 
-# look back periods & holding periods
-LOOK_BACK = [11]
-HOLDING   = [1]
+start = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
+end = DATE_RANGE[DATE_RANGE <= np.datetime64(f'{END}-12-31')][-1]
 
-START = DATE_RANGE[DATE_RANGE >= np.datetime64(dt.date(START, 1, 1))][0]
-END = DATE_RANGE[DATE_RANGE <= np.datetime64(dt.date(END, 12, 31))][-1]
-
+collector = {}
 
 for lb in LOOK_BACK:
     hd = max(HOLDING)
-    print('\nCalculating (%s, %s) strategy...' % (lb, hd), end='\t')
+    print(f'\nCalculating ({lb}, {hd}) strategy...', end='\t')
 
     # on this date we calculate the first set of signals
-    first_date = DATE_RANGE[DATE_RANGE <= START][-hd]
+    first_date = DATE_RANGE[DATE_RANGE <= start][-hd]
     # calculate signals for every month in this range
-    date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= END)]
-
-    # we will split the task and distribute the workloads to multiple processes
-    size = len(date_range) // CPU_COUNT  # the size of each workload
-    chunks = []
+    date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= end)]
+    
+    # split the workload
+    size = len(date_range) // CPU_COUNT
+    sub_ranges = []
     for i in range(CPU_COUNT):
         if i != CPU_COUNT-1:
-            chunks.append(date_range[size*i:size*(i+1)])
+            sub_ranges.append(date_range[size*i:size*(i+1)])
         else:
-            chunks.append(date_range[size*i:])
+            sub_ranges.append(date_range[size*i:])
 
     with futures.ProcessPoolExecutor(max_workers=CPU_COUNT) as ex:
-        start_time = time.time()
-        res = ex.map(get_signals, zip(chunks, [lb] * CPU_COUNT))
+        ts = time.time()
+        res = ex.map(calc_signals, zip(sub_ranges, [lb] * CPU_COUNT))
         for signals in res:
-            COLLECTOR.setdefault(lb, {}).update(signals)
-        print('{:.2f} s.'.format(time.time() - start_time))
+            collector.setdefault(lb, {}).update(signals)
+        te = time.time()
+        print('{:.2f}s'.format(te - ts))
 
 
 #%%
 
-# Output
 
-if not os.path.exists(ENV_PATH + f'/results/{NAME}'):
-    os.mkdir(ENV_PATH + f'/results/{NAME}')
-    os.mkdir(ENV_PATH + f'/results/{NAME}/signals')
+# save results to local
+
+if not os.path.exists(DIR + f'/results/{NAME}'):
+    os.mkdir(DIR + f'/results/{NAME}')
+    os.mkdir(DIR + f'/results/{NAME}/signals')
 
 for lb in LOOK_BACK:
     table = pd.DataFrame()
-    signals = COLLECTOR[lb]
+    signals = collector[lb]
     # consolidate each month's signals into a single table
     for k, v in signals.items():
         df = pd.DataFrame(v)
@@ -192,8 +170,8 @@ for lb in LOOK_BACK:
         df['DATE'] = k
         table = pd.concat([table, df], ignore_index=True)
 
-    table.rename(columns={'RET': 'SIGNAL'}, inplace=True)
-    table = table.reindex(columns=['DATE', 'PERMNO', 'SIGNAL'])
+    table = table.reindex(columns=['DATE', 'PERMNO', 'RET'])
     table.sort_values(by='DATE', inplace=True)
-    table.to_csv(ENV_PATH + f'/results/{NAME}/signals/{lb}.csv')
-    print('%s done.' % lb)
+    table.to_csv(DIR + f'/results/{NAME}/signals/{lb}.csv')
+    print(f'{lb} done.')
+
