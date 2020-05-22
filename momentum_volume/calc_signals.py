@@ -70,9 +70,6 @@ DATE_RANGE.sort()
 # average daily turnover in percentage during the portfolio formation period
 # the daily turnover is defined as the ratio of VOL to SHROUT
 
-# we need to adjust SHROUT/VOL, but since when we compute VOL / SHROUT, the
-# adjusting is cancelled out, actually no need to adjust.
-
 def calc_avg_daily_turnover(m, lb):
     """
     m: np.datetime64
@@ -86,8 +83,7 @@ def calc_avg_daily_turnover(m, lb):
     data = DSF[DSF.DATE == end].to_pandas_df()  # data on the last day prior to the formation date
     # apply constraints
     data = data[data.HEXCD.isin(EXCH_CODE)]  # exchange constraint
-    data = data[data.CFACPR != 0.]  # exclude erroneous rows
-    data = data[data.PRC.abs() / data.CFACPR >= PRICE_LIMIT]  # price constraint (prices adjusted)
+    data = data[data.PRC.abs() >= PRICE_LIMIT]  # price constraint (prices adjusted)
 
     common_stock_permno = COMMON_STOCK_PERMNO[end]  # PERMNO of common stocks according to information on 'end'
     data = data[data.PERMNO.isin(common_stock_permno)]  # common stock constraint

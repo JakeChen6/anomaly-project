@@ -53,7 +53,6 @@ HISTORY_REQUIREMENT = 12  # exclude firms with less than 12 months of past retur
 # read data
 
 MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
-MSF.PRC /= MSF.CFACPR  # adjust prices
 
 with open(DIR + '/data/common_stock_permno.pkl', 'rb') as f:
     COMMON_STOCK_PERMNO = pk.load(f)
