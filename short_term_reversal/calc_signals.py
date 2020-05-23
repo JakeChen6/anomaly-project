@@ -138,9 +138,9 @@ for lb in LOOK_BACK:
 
 # save results to local
 
-if not os.path.exists(DIR + f'/results/{NAME}'):
-    os.mkdir(DIR + f'/results/{NAME}')
-    os.mkdir(DIR + f'/results/{NAME}/signals')
+path = DIR + f'/anomaly-project/{NAME}/signals'
+if not os.path.exists(path):
+    os.mkdir(path)
 
 for lb in LOOK_BACK:
     table = pd.DataFrame()
@@ -154,6 +154,6 @@ for lb in LOOK_BACK:
 
     table = table.reindex(columns=['DATE', 'PERMNO', 'RET'])
     table.sort_values(by='DATE', inplace=True)
-    table.to_csv(DIR + f'/results/{NAME}/signals/{lb}.csv')
+    table.to_csv(path + f'/{lb}.csv')
     print(f'{lb} done.')
 
