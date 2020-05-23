@@ -61,7 +61,7 @@ def calc_portfolios(lb):
     
     lb: int
     """
-    signals = pd.read_csv(DIR + f'/results/{NAME}/signals/{lb}.csv')
+    signals = pd.read_csv(DIR + f'/anomaly-project/{NAME}/signals/{lb}.csv')
     signals['DATE'] = pd.to_datetime(signals['DATE'])  # str to datetime
 
     winners = {}
@@ -149,8 +149,8 @@ def helper_timeit(func, *args):
 
 # calculate portfolios
 
-if not os.path.exists(DIR + f'/results/{NAME}/returns'):
-    os.mkdir(DIR + f'/results/{NAME}/returns')
+if not os.path.exists(DIR + f'/anomaly-project/{NAME}/returns'):
+    os.mkdir(DIR + f'/anomaly-project/{NAME}/returns')
 
 collector_portfolios = {}
 
@@ -170,7 +170,7 @@ with futures.ProcessPoolExecutor(max_workers=4) as ex:
         print('look back {} done, {:.2f}s.'.format(lb, t))
 
 # save to local
-with open(DIR + f'/results/{NAME}/returns/portfolios.pkl', 'wb') as f:
+with open(DIR + f'/anomaly-project/{NAME}/returns/portfolios.pkl', 'wb') as f:
     pk.dump(collector_portfolios, f)
 
 
@@ -199,6 +199,6 @@ with futures.ProcessPoolExecutor(max_workers=4) as ex:
         print('{}-{} done, {:.2f}s.'.format(*key, t))
 
 # save to local
-with open(DIR + f'/results/{NAME}/returns/monthly_returns.pkl', 'wb') as f:
+with open(DIR + f'/anomaly-project/{NAME}/returns/monthly_returns.pkl', 'wb') as f:
     pk.dump(collector_monthly_rets, f)
 
