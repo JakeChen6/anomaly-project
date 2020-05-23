@@ -87,30 +87,26 @@ def calc_ratio(m, lb):
     data = MSF[(MSF.DATE >= start) & (MSF.DATE <= end) & (MSF.PERMNO.isin(eligible_permno))]
 
     # ratio of current price to the highest price during the past 12 months
-
-    def helper_calc_ratio(df):
-        """
-        df: pandas.DataFrame
-        """
-        df = df.dropna(subset=['PRC'])
-        df.set_index('DATE', inplace=True)
-        
-        if end not in df.index:  # no data on month m-1
-            return np.nan
-
-        highest = df.ASKHI.abs().max()
+    ratios = {}
+    for p in data.PERMNO.unique():
+        rows = data[data.PERMNO == p]
+        rows = rows.dropna(subset=['PRC'])
+        rows.set_index('DATE', inplace=True)
+        if end not in rows.index:  # no data on month m-1
+            continue
+        highest = rows.ASKHI.abs().max()
         if pd.isna(highest) or highest == 0.:
-            return np.nan
+            continue
+        r = abs(rows.loc[end, 'PRC']) / highest  # current price scaled by the highest price
+        if pd.notna(r):
+            ratios[p] = r
 
-        r = abs(df.loc[end, 'PRC']) / highest  # current price scaled by the highest price
-        return r
+    # save in a pandas.Series
+    s = pd.Series(ratios)
+    s.name = 'RATIO'
+    s.index.name = 'PERMNO'
 
-    ratios = data.groupby('PERMNO').apply(helper_calc_ratio)
-    ratios.dropna(inplace=True)
-
-    ratios.name = 'RATIO'
-
-    return ratios
+    return s
 
 
 def calc_signals(args):
