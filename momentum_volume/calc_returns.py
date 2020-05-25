@@ -76,16 +76,22 @@ def calc_portfolios(lb):
     # in each month we have a new winner portfolio and a new loser portfolio
     # computed based on signal ranking.
     for month in avg_daily_turnover.DATE.unique():
+        # independent sort 1
         rows = avg_daily_turnover[avg_daily_turnover.DATE == month]
         rows = rows.set_index('PERMNO')
         cut = pd.qcut(rows.avg_daily_turnover.rank(method='first'), CUT, labels=False)
-        eligible = cut[cut == CUT-1].index  # high volume group
+        high_vol = cut[cut == CUT-1].index  # high volume group
 
-        rows = cum_rets[(cum_rets.DATE == month) & (cum_rets.PERMNO.isin(eligible))]
+        # independent sort 2
+        rows = cum_rets[(cum_rets.DATE == month)]
         rows = rows.set_index('PERMNO')
         deciles = pd.qcut(rows.RET.rank(method='first'), 10, labels=False)  # cut into deciles based on signal ranking
-        winners[month] = deciles[deciles == 9].index.tolist()
-        losers[month] = deciles[deciles == 0].index.tolist()
+        w = deciles[deciles == 9].index.tolist()
+        l = deciles[deciles == 0].index.tolist()
+
+        # intersection of the two sorts are grouped together
+        winners[month] = list(set(w) & set(high_vol))
+        losers[month] = list(set(l) & set(high_vol))
 
     return winners, losers
 
