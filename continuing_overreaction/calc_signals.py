@@ -175,7 +175,7 @@ for lb in LOOK_BACK:
     print(f'\nCalculating ({lb}, {hd}) strategy...', end='\t')
 
     # on this date we calculate the first set of signals
-    first_date = DATE_RANGE[DATE_RANGE <= start][-hd]
+    first_date = DATE_RANGE[DATE_RANGE <= start][-hd-1]
     # calculate signals for every month in this range
     date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= end)]
 
