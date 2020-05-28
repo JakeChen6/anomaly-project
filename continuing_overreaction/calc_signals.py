@@ -70,7 +70,9 @@ DATE_RANGE.sort()
 # normalized weighted sum of the signed monthly trading volumes during the past
 # 12 months
 
-DOLLAR_VOL = {}  # to store the calculated dollar volumes
+#DOLLAR_VOL = {}  # to store the calculated dollar volumes
+with open(DIR + f'/anomaly-project/{NAME}/dollar_volmes.pkl', 'rb') as f:
+    DOLLAR_VOL = pk.load(f)
 
 MONTHBEGIN = pd.tseries.offsets.MonthBegin()
 WEIGHTS = np.array(range(1, 12+1))  # the more recent, the more weight assigned
