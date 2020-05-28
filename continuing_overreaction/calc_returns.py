@@ -118,7 +118,7 @@ def calc_monthly_rets(*args):
         data = MSF[(MSF.DATE == current_month) & (MSF.RET.notna())]
         data = data.set_index('PERMNO')
         for n in range(hd):
-            m = months[i-n]
+            m = months[i-n-1]  # a one-month lag between formation period and holding period
             w = winners[m]  # the winner portfolio
             l = losers[m]  # the loser portfolio
             wret = calc_port_ret(w, data)  # winner's return in the current month
