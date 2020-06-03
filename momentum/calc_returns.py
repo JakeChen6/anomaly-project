@@ -69,10 +69,12 @@ def calc_portfolios(lb):
     for month in signals.DATE.unique():
         rows = signals[signals.DATE == month]
         rows = rows.set_index('PERMNO')
-        cum_rets = rows.RET
-        deciles = pd.qcut(cum_rets.rank(method='first'), 10, labels=False)  # cut into deciles based on signal ranking
-        winners[month] = deciles[deciles == 9].index.tolist()
-        losers[month] = deciles[deciles == 0].index.tolist()
+        cum_rets = rows.RET.sort_values()
+        num_in_decile = cum_rets.size // 10  # number of stocks in a decile
+        winner_threshold = cum_rets.iloc[-num_in_decile]  # threshold of bottom decile 
+        loser_threshold = cum_rets.iloc[num_in_decile-1]  # threshold of top decile
+        winners[month] = cum_rets[cum_rets >= winner_threshold].index.tolist()
+        losers[month] = cum_rets[cum_rets <= loser_threshold].index.tolist()
 
     return winners, losers
 
