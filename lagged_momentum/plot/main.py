@@ -26,7 +26,7 @@ DIR = '/Users/zhishe/myProjects/anomaly'
 
 NAME = 'lagged_momentum'
 
-LOOK_BACK = ['12.7']
+LOOK_BACK = ['13.8']
 HOLDING = ['1']
 
 
