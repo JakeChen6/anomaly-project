@@ -18,19 +18,6 @@ DIR = '/Users/zhishe/myProjects/anomaly'
 #%%
 
 
-# anomaly setting
-
-NAME = 'industry_momentum'
-
-START = 1963
-END = 2018
-LOOK_BACK = [6]
-HOLDING = [6]
-
-
-#%%
-
-
 # read data
 
 MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
@@ -42,7 +29,17 @@ DATE_RANGE.sort()
 #%%
 
 
-START = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
+# anomaly setting
+
+NAME = 'industry_momentum'
+
+START = 1963
+END = 2018
+LOOK_BACK = [6]
+HOLDING = [6]
+
+
+START = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-07-01')][0]
 
 
 #%%
@@ -55,6 +52,7 @@ START = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
 # given monthly return series, display plots and statistics.
 
 IND_COUNT = 3
+
 
 def calc_portfolios(lb):
     """
@@ -76,7 +74,6 @@ def calc_portfolios(lb):
         rows = rows.set_index('PERMNO')
         rets = rows.RET
         sorted_rets = sorted(rets.unique())
-        
         winners[month] = rets[rets.isin(sorted_rets[-IND_COUNT:])].index.tolist()
         losers[month] = rets[rets.isin(sorted_rets[:IND_COUNT])].index.tolist()
 
@@ -90,7 +87,10 @@ def calc_port_ret(portfolio, data):
     portfolio: list
         a list of PERMNO representing the equally weighted portfolio
     """
-    permnos = set(portfolio) & set(data.index)
+    if not portfolio:
+        return 0
+
+    permnos = data.index.intersection(portfolio)
     ret = data.loc[permnos, 'RET'].sum() / len(portfolio)
 
     return ret
@@ -108,32 +108,43 @@ def calc_monthly_rets(*args):
     portfolios, hd = args
     winners, losers = portfolios
     
-    monthly_rets = {t: {} for t in ['w', 'l', 'ls']}
+    monthly_rets = {
+        'w': {},
+        'l': {},
+        'ls': {}
+        }
 
-    months = sorted(winners.keys())
-    for i, current_month in enumerate(months):
+    sorted_months = np.array(sorted(winners.keys()))
+
+    for current_month in DATE_RANGE:
         if current_month < START:
             continue
-        # in each month, the monthly return is calculated as the
-        # equally weighted average of the returns from the hd separate portfolios.
-        current_month_rets = {t: [] for t in ['w', 'l', 'ls']}
-
+        
         data = MSF[(MSF.DATE == current_month) & (MSF.RET.notna())]
         data = data.set_index('PERMNO')
-        for n in range(hd):
-            m = months[i-n]
-            w = winners[m]  # the winner portfolio
-            l = losers[m]  # the loser portfolio
+
+        # the monthly return in each month is calculated as the
+        # equally weighted average of the returns from the hd separate portfolios.
+        current_month_rets = {
+            'w': 0,
+            'l': 0,
+            'ls': 0
+            }
+        
+        for previous_month in sorted_months[sorted_months < current_month][-hd:]:
+            w = winners[previous_month]  # the winner portfolio
+            l = losers[previous_month]  # the loser portfolio
             wret = calc_port_ret(w, data)  # winner's return in the current month
             lret = calc_port_ret(l, data)  # loser's return in the current month
-            current_month_rets['w'].append(wret)
-            current_month_rets['l'].append(lret)
-            current_month_rets['ls'].append(wret - lret)  # long winner, short loser
-        
+            current_month_rets['w'] += wret
+            current_month_rets['l'] += lret
+            current_month_rets['ls'] += wret - lret  # long winner, short loser
+            
         # the equally weighted average
-        for t in ['w', 'l', 'ls']:
-            monthly_rets[t][current_month] = np.mean(current_month_rets[t])
-
+        monthly_rets['w'][current_month] = current_month_rets['w'] / hd
+        monthly_rets['l'][current_month] = current_month_rets['l'] / hd
+        monthly_rets['ls'][current_month] = current_month_rets['ls'] / hd
+        
     return monthly_rets
 
 

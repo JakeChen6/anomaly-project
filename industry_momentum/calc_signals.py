@@ -18,6 +18,25 @@ DIR = '/Users/zhishe/myProjects/anomaly'
 #%%
 
 
+# read data
+
+MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
+
+with open(DIR + '/data/common_stock_permno.pkl', 'rb') as f:
+    COMMON_STOCK_PERMNO = pk.load(f)
+
+# transform HSICCD to two-digit codes
+MSF['HSICCD'] //= 10  # three-digit -> two-digit, four-digit -> three-digit
+index = MSF[MSF['HSICCD'] >= 100].index
+MSF.loc[index, 'HSICCD'] //= 10  # three-digit -> two-digit
+
+DATE_RANGE = MSF.DATE.unique()
+DATE_RANGE.sort()
+
+
+#%%
+
+
 # anomaly setting
 
 NAME = 'industry_momentum'
@@ -81,34 +100,17 @@ INDUSTRY = [
 # constraints
 
 """
-1963 - 1995
+July 1963 - July 1995
 NYSE, AMEX, NASDAQ
 Common stocks
 Exclude if price < $5
 """
+START = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-07-01')][0]
+END = DATE_RANGE[DATE_RANGE <= np.datetime64(f'{END}-12-31')][-1]
 
 EXCH_CODE = [1, 2, 3]  # NYSE, AMEX, NASDAQ
 COMMON_STOCK_CD = [10, 11]  # only common stocks
 PRICE_LIMIT = 5. # Exclude if price < $5
-
-
-#%%
-
-
-# read data
-
-MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
-
-with open(DIR + '/data/common_stock_permno.pkl', 'rb') as f:
-    COMMON_STOCK_PERMNO = pk.load(f)
-
-# transform HSICCD to two-digit codes
-MSF['HSICCD'] //= 10  # three-digit -> two-digit, four-digit -> three-digit
-index = MSF[MSF['HSICCD'] >= 100].index
-MSF.loc[index, 'HSICCD'] //= 10  # three-digit -> two-digit
-
-DATE_RANGE = MSF.DATE.unique()
-DATE_RANGE.sort()
 
 
 #%%
@@ -131,13 +133,15 @@ def helper_get_weights(df):
     return weights
 
 
-def calc_past_ind_rets(m, lb):
+def calc_past_ind_rets(month, lb):
     """
-    m: np.datetime64
+    Use information before 'month' (including 'month') to calculate the signals.
+
+    month: np.datetime64
     lb: int
     """
     # past lb months
-    start, end = DATE_RANGE[DATE_RANGE < m][[-lb, -1]]
+    start, end = DATE_RANGE[DATE_RANGE <= month][[-lb, -1]]
 
     data = MSF[MSF.DATE == end]  # data of month m-1
     # apply constraints
@@ -149,7 +153,11 @@ def calc_past_ind_rets(m, lb):
 
     # get data in the past lb months for the eligible stocks
     eligible_permno = data.PERMNO.values
-    data = MSF[(MSF.DATE >= start) & (MSF.DATE <= end) & (MSF.PERMNO.isin(eligible_permno))]
+    data = MSF[
+        (MSF.DATE >= start) &
+        (MSF.DATE <= end) &
+        (MSF.PERMNO.isin(eligible_permno))
+        ]
 
     # calculate each industry's value-weighted return
     ind_rets = {}
@@ -199,9 +207,6 @@ def calc_signals(args):
 
 CPU_COUNT = 8
 
-start = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
-end = DATE_RANGE[DATE_RANGE <= np.datetime64(f'{END}-12-31')][-1]
-
 collector = {}
 
 for lb in LOOK_BACK:
@@ -209,9 +214,14 @@ for lb in LOOK_BACK:
     print(f'\nCalculating ({lb}, {hd}) strategy...', end='\t')
 
     # on this date we calculate the first set of signals
-    first_date = DATE_RANGE[DATE_RANGE <= start][-hd]
+    first_date = DATE_RANGE[DATE_RANGE < START][-hd]
+    # on this date we calculate the last set of signals
+    last_date = DATE_RANGE[DATE_RANGE < END][-1]
     # calculate signals for every month in this range
-    date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= end)]
+    date_range = DATE_RANGE[
+        (DATE_RANGE >= first_date) &
+        (DATE_RANGE <= last_date)
+        ]
     
     # split the workload
     size = len(date_range) // CPU_COUNT
