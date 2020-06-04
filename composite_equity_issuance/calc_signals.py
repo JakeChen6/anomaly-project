@@ -37,7 +37,7 @@ NAME = 'composite_equity_issuance'
 
 START = 1968
 END = 2018
-LOOK_BACK = [12]
+LOOK_BACK = [12, 12*5]
 HOLDING = [12]
 
 
