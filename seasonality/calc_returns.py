@@ -69,10 +69,13 @@ def calc_portfolios(lb):
     for month in signals.DATE.unique():
         rows = signals[signals.DATE == month]
         rows = rows.set_index('PERMNO')
-        deciles = pd.qcut(rows.RET.rank(method='first'), 10, labels=False)  # cut into deciles based on signal ranking
-        winners[month] = deciles[deciles == 9].index.tolist()
-        losers[month] = deciles[deciles == 0].index.tolist()
-
+        cum_rets = rows.RET.sort_values()
+        num_in_decile = cum_rets.size // 10  # number of stocks in a decile
+        winner_threshold = cum_rets.iloc[-num_in_decile]  # threshold of bottom decile 
+        loser_threshold = cum_rets.iloc[num_in_decile-1]  # threshold of top decile
+        winners[month] = cum_rets[cum_rets >= winner_threshold].index.tolist()
+        losers[month] = cum_rets[cum_rets <= loser_threshold].index.tolist()
+        
     return winners, losers
 
 
@@ -83,7 +86,10 @@ def calc_port_ret(portfolio, data):
     portfolio: list
         a list of PERMNO representing the equally weighted portfolio
     """
-    permnos = set(portfolio) & set(data.index)
+    if not portfolio:
+        return 0
+
+    permnos = data.index.intersection(portfolio)
     ret = data.loc[permnos, 'RET'].sum() / len(portfolio)
 
     return ret
@@ -101,9 +107,14 @@ def calc_monthly_rets(*args):
     portfolios, hd = args
     winners, losers = portfolios
     
-    monthly_rets = {t: {} for t in ['w', 'l', 'ls']}
+    monthly_rets = {
+        'w': {},
+        'l': {},
+        'ls': {}
+        }
 
-    months = np.array(sorted(winners.keys()))
+    sorted_months = np.array(sorted(winners.keys()))
+
     for current_month in DATE_RANGE:
         if current_month < START:
             continue
@@ -111,9 +122,9 @@ def calc_monthly_rets(*args):
         data = MSF[(MSF.DATE == current_month) & (MSF.RET.notna())]
         data = data.set_index('PERMNO')
 
-        m = months[months < current_month][-1]
-        w = winners[m]  # the winner portfolio
-        l = losers[m]  # the loser portfolio
+        previous_month = sorted_months[sorted_months < current_month][-1]
+        w = winners[previous_month]  # the winner portfolio
+        l = losers[previous_month]  # the loser portfolio
         wret = calc_port_ret(w, data)  # winner's return in the current month
         lret = calc_port_ret(l, data)  # loser's return in the current month
         monthly_rets['w'][current_month] = wret
