@@ -47,7 +47,7 @@ HOLDING = [1]
 # constraints
 
 """
-January 1965 - December 2002
+1965 - 2002
 NYSE, AMEX
 Common stocks
 Exclude if price < $5
@@ -63,7 +63,6 @@ HISTORY_LIMIT = 12  # At least one year of data to be included in the sample
 
 
 #%%
-
 
 # signal calculation algorithm
 
