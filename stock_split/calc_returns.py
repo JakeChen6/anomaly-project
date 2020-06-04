@@ -85,7 +85,7 @@ def calc_port_ret(portfolio, data):
     if not portfolio:
         return 0
 
-    permnos = set(portfolio) & set(data.index)
+    permnos = data.index.intersection(portfolio)
     ret = data.loc[permnos, 'RET'].sum() / len(portfolio)
 
     return ret
@@ -103,7 +103,11 @@ def calc_monthly_rets(*args):
     portfolios, hd = args
     winners, losers = portfolios
     
-    monthly_rets = {t: {} for t in ['w', 'l', 'ls']}
+    monthly_rets = {
+        'w': {},
+        'l': {},
+        'ls': {}
+        }
 
     for i, current_month in enumerate(DATE_RANGE):
         if current_month < START:
