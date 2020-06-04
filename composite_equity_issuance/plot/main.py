@@ -26,7 +26,7 @@ DIR = '/Users/zhishe/myProjects/anomaly'
 
 NAME = 'composite_equity_issuance'
 
-LOOK_BACK = ['12']
+LOOK_BACK = ['12', '60']
 HOLDING = ['12']
 
 
