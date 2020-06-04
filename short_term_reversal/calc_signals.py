@@ -18,6 +18,20 @@ DIR = '/Users/zhishe/myProjects/anomaly'
 #%%
 
 
+# read data
+
+MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
+
+with open(DIR + '/data/common_stock_permno.pkl', 'rb') as f:
+    COMMON_STOCK_PERMNO = pk.load(f)
+
+DATE_RANGE = MSF.DATE.unique()
+DATE_RANGE.sort()
+
+
+#%%
+
+
 # anomaly setting
 
 NAME = 'short_term_reversal'
@@ -39,6 +53,8 @@ NYSE, AMEX, NASDAQ
 Common stocks
 Exclude if price < $5
 """
+START = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
+END = DATE_RANGE[DATE_RANGE <= np.datetime64(f'{END}-12-31')][-1]
 
 EXCH_CODE = [1, 2, 3]  # NYSE, AMEX, NASDAQ
 COMMON_STOCK_CD = [10, 11]  # only common stocks
@@ -48,37 +64,22 @@ PRICE_LIMIT = 5. # Exclude if price < $5
 #%%
 
 
-# read data
-
-MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
-
-with open(DIR + '/data/common_stock_permno.pkl', 'rb') as f:
-    COMMON_STOCK_PERMNO = pk.load(f)
-
-DATE_RANGE = MSF.DATE.unique()
-DATE_RANGE.sort()
-
-
-#%%
-
-
 # signal calculation algorithm
 
 # one-month lagged returns
 
-def get_lagged_return(m):
+def get_lagged_return(month):
     """
-    m: np.datetime64
-    """
-    # past lb months
-    end = DATE_RANGE[DATE_RANGE < m][-1]
+    Use information before 'month' (including 'month') to calculate the signals.
 
-    data = MSF[MSF.DATE == end]  # data of month m-1
+    month: np.datetime64
+    """
+    data = MSF[MSF.DATE == month]  # data of month m
     # apply constraints
     data = data[data.HEXCD.isin(EXCH_CODE)]  # exchange constraint
     data = data[data.PRC.abs() >= PRICE_LIMIT]  # price constraint
 
-    common_stock_permno = COMMON_STOCK_PERMNO[end]  # PERMNO of common stocks according to information on 'end'
+    common_stock_permno = COMMON_STOCK_PERMNO[month]  # PERMNO of common stocks according to information on 'end'
     data = data[data.PERMNO.isin(common_stock_permno)]  # common stock constraint
 
     # one-month lagged returns
@@ -101,9 +102,6 @@ def calc_signals(args):
 
 CPU_COUNT = 8
 
-start = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
-end = DATE_RANGE[DATE_RANGE <= np.datetime64(f'{END}-12-31')][-1]
-
 collector = {}
 
 for lb in LOOK_BACK:
@@ -111,9 +109,14 @@ for lb in LOOK_BACK:
     print(f'\nCalculating ({lb}, {hd}) strategy...', end='\t')
 
     # on this date we calculate the first set of signals
-    first_date = DATE_RANGE[DATE_RANGE <= start][-hd]
+    first_date = DATE_RANGE[DATE_RANGE < START][-hd]
+    # on this date we calculate the last set of signals
+    last_date = DATE_RANGE[DATE_RANGE < END][-1]
     # calculate signals for every month in this range
-    date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= end)]
+    date_range = DATE_RANGE[
+        (DATE_RANGE >= first_date) &
+        (DATE_RANGE <= last_date)
+        ]
     
     # split the workload
     size = len(date_range) // CPU_COUNT
