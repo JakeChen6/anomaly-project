@@ -35,7 +35,7 @@ DATE_RANGE.sort()
 
 NAME = 'net_share_issuance'
 
-START = 1963
+START = 1973
 END = 2018
 LOOK_BACK = [12]
 HOLDING = [12]
@@ -47,7 +47,7 @@ HOLDING = [12]
 # constraints
 
 """
-July 1963 - December 2012
+July 1973 - December 2012
 NYSE, AMEX, NASDAQ
 Common stocks
 Exclude if price < $5
