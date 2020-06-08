@@ -18,6 +18,21 @@ DIR = '/Users/zhishe/myProjects/anomaly'
 #%%
 
 
+# read data
+
+DSF = vaex.open(DIR + '/data/Stock/h5/dsf.h5')
+
+with open(DIR + '/data/common_stock_permno.pkl', 'rb') as f:
+    COMMON_STOCK_PERMNO = pk.load(f)
+
+MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
+DATE_RANGE = MSF.DATE.unique()
+DATE_RANGE.sort()
+
+
+#%%
+
+
 # anomaly setting
 
 NAME = 'continuing_overreaction'
@@ -40,26 +55,14 @@ Common stocks
 Exclude if after dropna, length < 12
 Exclude if price < $1 / $5
 """
+START = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
+END = DATE_RANGE[DATE_RANGE <= np.datetime64(f'{END}-12-31')][-1]
 
 EXCH_CODE = [1, 2, 3]  # NYSE, AMEX, NASDAQ
 COMMON_STOCK_CD = [10, 11]  # only common stocks
 HISTORY_LIMIT = 12  # Exclude if after dropna, length < 12
 PRICE_LIMIT = 1. # Exclude if price < $1
-
-
-#%%
-
-
-# read data
-
-DSF = vaex.open(DIR + '/data/Stock/h5/dsf.h5')
-
-with open(DIR + '/data/common_stock_permno.pkl', 'rb') as f:
-    COMMON_STOCK_PERMNO = pk.load(f)
-
-MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
-DATE_RANGE = MSF.DATE.unique()
-DATE_RANGE.sort()
+MONTH_GAP = 1  # impose an one-month gap between the formation period and the holding period
 
 
 #%%
@@ -70,12 +73,12 @@ DATE_RANGE.sort()
 # normalized weighted sum of the signed monthly trading volumes during the past
 # 12 months
 
-#DOLLAR_VOL = {}  # to store the calculated dollar volumes
-with open(DIR + f'/anomaly-project/{NAME}/dollar_volmes.pkl', 'rb') as f:
-    DOLLAR_VOL = pk.load(f)
+DOLLAR_VOL = {}  # to store the calculated dollar volumes
+#with open(DIR + f'/anomaly-project/{NAME}/dollar_volmes.pkl', 'rb') as f:
+#    DOLLAR_VOL = pk.load(f)
 
 MONTHBEGIN = pd.tseries.offsets.MonthBegin()
-WEIGHTS = np.array(range(1, 12+1))  # the more recent, the more weight assigned
+WEIGHTS = np.arange(1, 12+1)  # the more recent, the more weight assigned
 
 
 def helper_to_sign(x):
@@ -87,15 +90,17 @@ def helper_to_sign(x):
         return -1
 
 
-def calc_co_measure(m, lb):
+def calc_co_measure(month, lb):
     """
-    m: np.datetime64
+    Use information before 'month' (including 'month') to calculate the signals.
+
+    month: np.datetime64
     lb: int
     """
     ts = time.time()
 
     # past lb months
-    start, end = DATE_RANGE[DATE_RANGE < m][[-lb, -1]]
+    start, end = DATE_RANGE[DATE_RANGE <= month][[-lb, -1]]
 
     data = MSF[MSF.DATE == end]  # get last available data to apply constraints
     # apply constraints
@@ -117,7 +122,7 @@ def calc_co_measure(m, lb):
     # calculate normalized weighted sum of the signed monthly trading volumes
 
     # first, calculate the dolalr volumes for the past 12 months.
-    past_12_months = DATE_RANGE[DATE_RANGE < m][-12:]
+    past_12_months = DATE_RANGE[DATE_RANGE <= month][-lb:]
 
     for month in past_12_months:
         if month not in DOLLAR_VOL:
@@ -134,11 +139,12 @@ def calc_co_measure(m, lb):
     # then, calculate the normalized weighted sum of the signed volumes for the eligible stocks
     past_data = past_data[past_data.PERMNO.isin(eligible)]
     past_data = past_data.set_index('PERMNO')
+    past_data.sort_values('DATE', inplace=True)
 
     co_measure = {}
     for p in eligible:
         dollar_vol = [DOLLAR_VOL[month].loc[p] for month in past_12_months]
-        rets = past_data.loc[p].sort_values('DATE').RET.values
+        rets = past_data.loc[p].RET.values
         signs = list(map(helper_to_sign, rets))
         signed_vol = np.multiply(dollar_vol, signs)
 
@@ -152,7 +158,7 @@ def calc_co_measure(m, lb):
     co_measure.index.name = 'PERMNO'
 
     te = time.time()
-    print('{}, {:.2f}s'.format(m, te - ts))
+    print('{}, {:.2f}s'.format(month, te - ts))
 
     return co_measure
 
@@ -167,9 +173,6 @@ def calc_signals(args):
 
 # single process
 
-start = DATE_RANGE[DATE_RANGE >= np.datetime64(f'{START}-01-01')][0]
-end = DATE_RANGE[DATE_RANGE <= np.datetime64(f'{END}-12-31')][-1]
-
 collector = {}
 
 for lb in LOOK_BACK:
@@ -177,9 +180,14 @@ for lb in LOOK_BACK:
     print(f'\nCalculating ({lb}, {hd}) strategy...', end='\t')
 
     # on this date we calculate the first set of signals
-    first_date = DATE_RANGE[DATE_RANGE <= start][-hd-1]
+    first_date = DATE_RANGE[DATE_RANGE < START][-hd-MONTH_GAP]  # an one-month gap imposed
+    # on this date we calculate the last set of signals
+    last_date = DATE_RANGE[DATE_RANGE < END][-1]
     # calculate signals for every month in this range
-    date_range = DATE_RANGE[(DATE_RANGE >= first_date) & (DATE_RANGE <= end)]
+    date_range = DATE_RANGE[
+        (DATE_RANGE >= first_date) &
+        (DATE_RANGE <= last_date)
+        ]
 
     signals = calc_signals((date_range, lb))
     collector.setdefault(lb, {}).update(signals)
