@@ -141,12 +141,13 @@ def calc_smoothed_beta(month, lb):
     weekly_rets = weekly_rets.reorder_levels(['PERMNO', 'DATE'])
     beta = {}
     for p in weekly_rets.index.levels[0]:
-        y = weekly_rets.loc[p]  # dependent variable, stock's return
-        if not y.notnull().any():  # all values in y is nan
+        y = weekly_rets.loc[p].dropna()  # dependent variable, stock's return
+        x_ = x.loc[y.index]
+        if (not y.size) or (not x_.dropna().size):  # 0 size after dropping nan
             continue
         # create a model and fit it
         # firm-week observations are excluded when weekly returns are missing
-        model = sm.OLS(y, x.loc[y.index], missing='drop')
+        model = sm.OLS(y, x_, missing='drop')
         results = model.fit()
         beta[p] = results.params.loc[INDEX].mean()
 
