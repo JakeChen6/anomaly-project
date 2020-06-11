@@ -7,6 +7,7 @@
 import os
 import time
 import pickle as pk
+from concurrent import futures
 
 import numpy as np
 import pandas as pd
@@ -29,6 +30,9 @@ with open(DIR + '/data/common_stock_permno.pkl', 'rb') as f:
 MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
 DATE_RANGE = MSF.DATE.unique()
 DATE_RANGE.sort()
+
+# Fama-French Factors - mkt-rf
+FF = pd.read_csv(DIR + '/data/factors_daily.csv', index_col=0, parse_dates=True)
 
 
 #%%
@@ -75,8 +79,25 @@ PRICE_LIMIT = 5. # Exclude if price < $5
 # slope coefficients estimated from a regression of the excess return on the
 # contemporaneous and four lags of the CRSP equal-weighted market excess return.
 
+# independent variables in the regression: contemporaneous and lagged
+# CRSP value-weighted market excess returns.
+MKTRF = FF.copy()
+MKTRF.index = MKTRF.index.shift(-2, 'D')
+MKTRF.to_period('W', copy=False)  # to calculate weekly returns
+MKTRF['mktrf'] += 1
+MKTRF = MKTRF.groupby(level=0).mktrf.prod(min_count=1)
+
+# shift mktrf to get lagged values
+MKTRF = pd.DataFrame(MKTRF)
+for i in range(1, LAG+1):
+    MKTRF[str(i)] = MKTRF.mktrf.shift(i)
+# add the column of ones to the inputs to take into account the intercept
+MKTRF = sm.add_constant(MKTRF)
+
 # will be used many times, so defined once here.
-INDEX = ['RET'] + [str(i) for i in range(1, LAG+1)]
+INDEX = ['mktrf'] + [str(i) for i in range(1, LAG+1)]
+
+CPU_COUNT = 8
 
 
 def calc_smoothed_beta(month, lb):
@@ -123,33 +144,27 @@ def calc_smoothed_beta(month, lb):
     # calculate weekly returns as the compounded daily returns
     data = data[['PERMNO', 'DATE', 'RET']].to_pandas_df()
     data.set_index('DATE', inplace=True)
-    data.index = data.index.shift(-2, 'D')  # so that we can apply 'to_period' below
+    data['RET'] -= FF.loc[data.index, 'rf']  # returns become excess returns
+    data.index = data.index.shift(-2, 'D')  # in order to apply 'to_period' below
     data.to_period('W', copy=False)
     data.reset_index(inplace=True)
     data['RET'] += 1  # to calculate cumulative returns
-    weekly_rets = data.groupby(['DATE', 'PERMNO']).RET.prod(min_count=1)
-
-    # independent variables: contemporaneous and lagged CRSP equal-weighted market return
-    mkt_rets = weekly_rets.mean(level='DATE', skipna=True)
-    mkt_rets = pd.DataFrame(mkt_rets)
-    for i in range(1, LAG+1):  # shift mkt_rets to get lagged values
-        mkt_rets[str(i)] = mkt_rets.RET.shift(i)
-    # add the column of ones to the inputs to take into account the intercept
-    x = sm.add_constant(mkt_rets)
+    weekly_rets = data.groupby(['PERMNO', 'DATE']).RET.prod(min_count=1)
 
     # regress to get slope coefficients
-    weekly_rets = weekly_rets.reorder_levels(['PERMNO', 'DATE'])
+    workloads = weekly_rets.index.levels[0]
+    s = len(workloads) // CPU_COUNT  # load size
+    to_distribute = [workloads[s*i:s*(i+1)] if i != CPU_COUNT-1 else workloads[s*i:]
+                     for i in range(CPU_COUNT)]
+
     beta = {}
-    for p in weekly_rets.index.levels[0]:
-        y = weekly_rets.loc[p].dropna()  # dependent variable, stock's return
-        x_ = x.loc[y.index]
-        if (not y.size) or (not x_.dropna().size):  # 0 size after dropping nan
-            continue
-        # create a model and fit it
-        # firm-week observations are excluded when weekly returns are missing
-        model = sm.OLS(y, x_, missing='drop')
-        results = model.fit()
-        beta[p] = results.params.loc[INDEX].mean()
+    with futures.ProcessPoolExecutor(max_workers=CPU_COUNT) as ex:
+        wait_for = []
+        for elm in to_distribute:
+            f = ex.submit(helper_regress, weekly_rets, elm)
+            wait_for.append(f)
+        for f in futures.as_completed(wait_for):
+            beta.update(f.result())
 
     beta = pd.Series(beta)
     beta.name = 'BETA'
@@ -160,6 +175,21 @@ def calc_smoothed_beta(month, lb):
     print('{}, {:.2f}s'.format(month, te - ts))
 
     return beta
+
+
+def helper_regress(weekly_rets, permnos):
+    res = {}
+    for p in permnos:
+        y = weekly_rets.loc[p].dropna()  # dependent variable, stock's return
+        x = MKTRF.loc[y.index]
+        if (not y.size) or (not x.dropna().size):  # 0 size after dropping nan
+                continue
+        # create a model and fit it
+        # firm-week observations are excluded when weekly returns are missing
+        model = sm.OLS(y, x, missing='drop')
+        results = model.fit()
+        res[p] = results.params.loc[INDEX].mean()
+    return res
 
 
 def calc_signals(args):
