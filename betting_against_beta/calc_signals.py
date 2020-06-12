@@ -12,7 +12,6 @@ from concurrent import futures
 import numpy as np
 import pandas as pd
 import vaex
-import statsmodels.api as sm
 from scipy.stats import pearsonr
 
 DIR = '/Users/zhishe/myProjects/anomaly'
