@@ -31,9 +31,12 @@ MSF = pd.read_hdf(DIR + '/data/msf.h5', key='msf')
 DATE_RANGE = MSF.DATE.unique()
 DATE_RANGE.sort()
 
-# Fama-French Factors - mkt-rf
+# Fama-French Factors - to get the rf
 FF = pd.read_csv(DIR + '/data/factors_daily.csv', index_col=0, parse_dates=True)
 
+DSI = pd.read_csv(DIR + '/data/dsi.csv', index_col=0, parse_dates=True)
+DSI = DSI.reindex(index=FF.index).dropna()
+DSI['ewmktrf'] = DSI.ewretd - FF.loc[DSI.index, 'rf']  # EW market excess returns
 
 #%%
 
@@ -81,21 +84,21 @@ PRICE_LIMIT = 5. # Exclude if price < $5
 
 # independent variables in the regression: contemporaneous and lagged
 # CRSP value-weighted market excess returns.
-MKTRF = FF.copy()
+MKTRF = DSI[['ewmktrf']].copy()
+MKTRF['ewmktrf'] += 1
 MKTRF.index = MKTRF.index.shift(-2, 'D')
 MKTRF.to_period('W', copy=False)  # to calculate weekly returns
-MKTRF['mktrf'] += 1
-MKTRF = MKTRF.groupby(level=0).mktrf.prod(min_count=1)
+MKTRF = MKTRF.groupby(level=0).ewmktrf.prod(min_count=1) - 1
 
 # shift mktrf to get lagged values
 MKTRF = pd.DataFrame(MKTRF)
 for i in range(1, LAG+1):
-    MKTRF[str(i)] = MKTRF.mktrf.shift(i)
+    MKTRF[str(i)] = MKTRF.ewmktrf.shift(i)
 # add the column of ones to the inputs to take into account the intercept
 MKTRF = sm.add_constant(MKTRF)
 
 # will be used many times, so defined once here.
-INDEX = ['mktrf'] + [str(i) for i in range(1, LAG+1)]
+INDEX = ['ewmktrf'] + [str(i) for i in range(1, LAG+1)]
 
 CPU_COUNT = 8
 
@@ -145,11 +148,11 @@ def calc_smoothed_beta(month, lb):
     data = data[['PERMNO', 'DATE', 'RET']].to_pandas_df()
     data.set_index('DATE', inplace=True)
     data['RET'] -= FF.loc[data.index, 'rf']  # returns become excess returns
+    data['RET'] += 1  # to calculate cumulative returns
     data.index = data.index.shift(-2, 'D')  # in order to apply 'to_period' below
     data.to_period('W', copy=False)
     data.reset_index(inplace=True)
-    data['RET'] += 1  # to calculate cumulative returns
-    weekly_rets = data.groupby(['PERMNO', 'DATE']).RET.prod(min_count=1)
+    weekly_rets = data.groupby(['PERMNO', 'DATE']).RET.prod(min_count=1) - 1
 
     # regress to get slope coefficients
     workloads = weekly_rets.index.levels[0]
