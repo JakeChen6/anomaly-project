@@ -99,13 +99,10 @@ def calc_ratio(month, lb):
     # calculate 52 week high for all the stocks
     dsf_data['ASKHI'] = dsf_data.ASKHI.abs()
     _52_week_high = dsf_data.groupby('PERMNO').ASKHI.max()
-    _52_week_high.dropna(inplace=True)  # drop nan
-    _52_week_high = _52_week_high[_52_week_high != 0]  # exclude 0
+    _52_week_high.replace(0, np.nan, inplace=True)
 
     # ratio of current price to the highest price during the past 12 months
-    data = data.set_index('PERMNO')
-    data.dropna(subset=['PRC'], inplace=True)
-    ratios = data.PRC.abs() / _52_week_high.loc[data.index]  # current price scaled by the highest price
+    ratios = data.set_index('PERMNO').PRC.abs() / _52_week_high
     ratios.dropna(inplace=True)
     ratios.name = 'RATIO'
 
