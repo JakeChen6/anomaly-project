@@ -38,7 +38,7 @@ NAME = 'lagged_momentum'
 
 START = 1927
 END = 2018
-LOOK_BACK = [13.8]
+LOOK_BACK = [12.7]
 HOLDING = [1]
 
 
@@ -76,7 +76,7 @@ def calc_intermediate_horizon_rets(month, lb):
     lb: int
     """
     # past lb months
-    start, end = DATE_RANGE[DATE_RANGE <= month][[-13, -8]]
+    start, end = DATE_RANGE[DATE_RANGE <= month][[-12, -7]]
 
     data = MSF[MSF.DATE == end]  # data of month m-1
     # apply constraints
@@ -88,11 +88,9 @@ def calc_intermediate_horizon_rets(month, lb):
 
     # get data in the past lb months for the eligible stocks
     eligible_permno = data.PERMNO.values
-    data = MSF[
-        (MSF.DATE >= start) &
-        (MSF.DATE <= end) &
-        (MSF.PERMNO.isin(eligible_permno))
-        ]
+    data = MSF[(MSF.DATE >= start) &
+               (MSF.DATE <= end) &
+               (MSF.PERMNO.isin(eligible_permno))]
 
     # cumulative returns in the past lb months
     data = data.set_index('PERMNO')
@@ -126,10 +124,8 @@ for lb in LOOK_BACK:
     # on this date we calculate the last set of signals
     last_date = DATE_RANGE[DATE_RANGE < END][-1]
     # calculate signals for every month in this range
-    date_range = DATE_RANGE[
-        (DATE_RANGE >= first_date) &
-        (DATE_RANGE <= last_date)
-        ]
+    date_range = DATE_RANGE[(DATE_RANGE >= first_date) &
+                            (DATE_RANGE <= last_date)]
     
     # split the workload
     size = len(date_range) // CPU_COUNT

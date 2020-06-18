@@ -34,7 +34,7 @@ NAME = 'lagged_momentum'
 
 START = 1927
 END = 2018
-LOOK_BACK = [13.8]
+LOOK_BACK = [12.7]
 HOLDING = [1]
 
 
