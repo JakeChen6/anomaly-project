@@ -155,7 +155,7 @@ def helper_calc_beta(data, permnos):
         y -= FF.loc[y.index, 'rf']  # dependent variable, stock's excess return
         x = MKTRF.loc[y.index]
         if (not y.size) or (not x.dropna().size):  # 0 size after dropping nan
-                continue
+            continue
         # create a model and fit it
         model = sm.OLS(y, x, missing='drop')
         results = model.fit()
