@@ -35,7 +35,7 @@ DATE_RANGE.sort()
 FF = pd.read_csv(DIR + '/data/factors_daily.csv', index_col=0, parse_dates=True)
 
 DSI = pd.read_csv(DIR + '/data/dsi.csv', index_col=0, parse_dates=True)
-DSI = DSI.reindex(index=FF.index).dropna()
+DSI = DSI.reindex(index=FF.index).dropna(subset=['ewretd'])
 DSI['ewmktrf'] = DSI.ewretd - FF.loc[DSI.index, 'rf']  # EW market excess returns
 
 
