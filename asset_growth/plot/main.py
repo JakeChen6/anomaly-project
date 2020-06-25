@@ -35,7 +35,7 @@ HOLDING = ['-']
 
 # read data
 
-with open(DIR + f'/anomaly-project/{NAME}/returns/monthly_returns.pkl', 'rb') as f:
+with open(DIR + f'/anomaly-project/{NAME}/monthly_returns.pkl', 'rb') as f:
     MONTHLY_RETS = pk.load(f)
 
 
@@ -43,9 +43,8 @@ with open(DIR + f'/anomaly-project/{NAME}/returns/monthly_returns.pkl', 'rb') as
 
 
 @lru_cache()
-def get_data(lb, hd):
-    lb, hd = map(int, (lb, hd))
-    monthly_rets = MONTHLY_RETS[(lb, hd)]
+def get_data():
+    monthly_rets = MONTHLY_RETS
     data = pd.DataFrame(monthly_rets)
     data.index.name='date'
     data.sort_index(inplace=True)
@@ -124,8 +123,7 @@ def button_click():
 
 
 def update(s=None, e=None):
-    lb, hd = lookback.value, holding.value
-    data = get_data(lb, hd)
+    data = get_data()
 
     # assuming valid inputs below, i.e., both s and e are in range.
     if s:
@@ -161,8 +159,7 @@ def update_stats(data):
 
 
 def selection_change(attrname, old, new):
-    lb, hd = lookback.value, holding.value
-    data = get_data(lb, hd)
+    data = get_data()
     selected = source.selected.indices
     if selected:
         data = data.iloc[selected, :]
