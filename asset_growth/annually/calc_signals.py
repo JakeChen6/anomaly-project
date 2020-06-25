@@ -50,4 +50,4 @@ for fyear in fyears:  # calculate the asset growth of all the stocks in each fis
     df_join = df_join[['gvkey', 'lpermno', 'datadate', 'fyear', 'growth']]  # fields that we need
     result = result.append(df_join, ignore_index=True)  # append to signal container
 
-result.to_csv(DIR + f'/anomaly-project/{NAME}/signals.csv')
+result.to_csv(DIR + f'/anomaly-project/{NAME}/annually/signals.csv')

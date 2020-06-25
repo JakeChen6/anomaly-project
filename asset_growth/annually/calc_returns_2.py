@@ -51,7 +51,7 @@ def calc_portfolios():
     and a loser portfolio series.
     
     """
-    signals = pd.read_csv(DIR + f'/anomaly-project/{NAME}/signals.csv', index_col=0)
+    signals = pd.read_csv(DIR + f'/anomaly-project/{NAME}/annually/signals.csv', index_col=0)
     signals['datadate'] = pd.to_datetime(signals['datadate'])
     signals.sort_values('datadate', inplace=True)
 
@@ -159,8 +159,8 @@ portfolios = calc_portfolios()
 monthly_rets = calc_monthly_rets(portfolios)
 
 # save to local
-with open(DIR + f'/anomaly-project/{NAME}/portfolios.pkl', 'wb') as f:
+with open(DIR + f'/anomaly-project/{NAME}/annually/portfolios.pkl', 'wb') as f:
     pk.dump(portfolios, f)
 
-with open(DIR + f'/anomaly-project/{NAME}/monthly_returns.pkl', 'wb') as f:
+with open(DIR + f'/anomaly-project/{NAME}/annually/monthly_returns.pkl', 'wb') as f:
     pk.dump(monthly_rets, f)
