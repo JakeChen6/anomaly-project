@@ -35,7 +35,7 @@ HOLDING = ['-']
 
 # read data
 
-with open(DIR + f'/anomaly-project/{NAME}/monthly_returns.pkl', 'rb') as f:
+with open(DIR + f'/anomaly-project/{NAME}/annualy/monthly_returns.pkl', 'rb') as f:
     MONTHLY_RETS = pk.load(f)
 
 
